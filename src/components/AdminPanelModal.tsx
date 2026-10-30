@@ -45,6 +45,8 @@ import {
   CalendarCheck,
   Plus,
   Palette,
+  AlertTriangle,
+  Copy,
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, getAccessToken } from '../utils/googleAuth';
 import {
@@ -77,6 +79,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
   const [googleError, setGoogleError] = useState<string>('');
+  const [copiedDomain, setCopiedDomain] = useState<boolean>(false);
   const [syncingBookingId, setSyncingBookingId] = useState<string>('');
   const [syncAllLoading, setSyncAllLoading] = useState<boolean>(false);
   const [syncedRecords, setSyncedRecords] = useState<Record<string, SyncedCalendarRecord>>(getSyncedCalendarRecords());
@@ -1381,8 +1384,92 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {googleError && (
-                  <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl font-medium border border-red-200">
-                    {googleError}
+                  <div className="space-y-3">
+                    <div className="p-3 bg-red-50 text-red-700 text-xs rounded-xl font-medium border border-red-200">
+                      {googleError}
+                    </div>
+
+                    {googleError.includes('unauthorized-domain') && (
+                      <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-neutral-900 space-y-3 shadow-sm">
+                        <div className="flex items-start gap-2.5">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-sm font-bold text-amber-950">
+                              Solusi Masalah "auth/unauthorized-domain" di Vercel:
+                            </div>
+                            <p className="text-xs text-amber-900 mt-1 leading-relaxed">
+                              Domain website Anda di Vercel belum dimasukkan ke daftar <strong>Authorized Domains</strong> Firebase Authentication. Firebase membatasi login Google hanya untuk domain yang Anda setujui demi keamanan.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Copy Domain Box */}
+                        <div className="bg-white p-3 rounded-xl border border-amber-200 space-y-1.5">
+                          <div className="text-[11px] font-semibold text-neutral-600 uppercase tracking-wider">
+                            Domain Anda Saat Ini:
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs font-mono font-bold bg-neutral-100 text-neutral-900 px-3 py-2 rounded-lg border border-neutral-200 flex-1 truncate">
+                              {typeof window !== 'undefined' ? window.location.hostname : 'domain-anda.vercel.app'}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (typeof window !== 'undefined') {
+                                  navigator.clipboard.writeText(window.location.hostname);
+                                  setCopiedDomain(true);
+                                  setTimeout(() => setCopiedDomain(false), 2500);
+                                }
+                              }}
+                              className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold rounded-lg shrink-0 flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                            >
+                              {copiedDomain ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Tersalin!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Salin Domain</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Step-by-Step Instructions */}
+                        <div className="text-xs space-y-2 text-neutral-800">
+                          <div className="font-bold text-amber-950">Langkah mengatasinya (hanya 1 menit):</div>
+                          <ol className="list-decimal list-inside space-y-1.5 pl-1 text-xs leading-relaxed text-neutral-700">
+                            <li>
+                              Buka pengaturan Firebase Project Anda:{' '}
+                              <a
+                                href="https://console.firebase.google.com/project/gen-lang-client-0185439155/authentication/settings"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline font-bold text-blue-700 hover:text-blue-900 inline-flex items-center gap-1"
+                              >
+                                <span>Buka Firebase Authentication Settings</span>
+                                <ExternalLink className="w-3 h-3 inline" />
+                              </a>
+                            </li>
+                            <li>
+                              Pilih tab <strong>Settings</strong> &rarr; scroll ke bawah ke bagian <strong>Authorized domains</strong>.
+                            </li>
+                            <li>
+                              Klik tombol <strong>Add domain</strong> (Tambahkan domain).
+                            </li>
+                            <li>
+                              Tempelkan (paste) domain Vercel Anda yang disalin di atas (atau masukkan <code>vercel.app</code> agar semua deployment diizinkan), lalu klik <strong>Save</strong>.
+                            </li>
+                            <li>
+                              Setelah disimpan, kembali ke halaman ini dan klik tombol <strong>Sign in with Google</strong> lagi.
+                            </li>
+                          </ol>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
