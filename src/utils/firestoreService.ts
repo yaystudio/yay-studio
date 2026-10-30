@@ -83,7 +83,9 @@ export function subscribeToServices(
         } else {
           const loaded: Service[] = [];
           snapshot.forEach((d) => {
-            loaded.push(d.data() as Service);
+            const data = d.data() as Service;
+            const svcId = data.id || d.id;
+            loaded.push({ ...data, id: svcId });
           });
 
           // Ensure all default services exist, especially Photo by Photographer

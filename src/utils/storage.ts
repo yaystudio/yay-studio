@@ -84,15 +84,33 @@ export function calculateServicePrice(service: Service, peopleCount: number): nu
 
 export function updateService(updatedService: Service): Service[] {
   const current = getStoredServices();
-  const next = current.map((s) => (s.id === updatedService.id ? updatedService : s));
-  localStorage.setItem(SERVICES_DATA_KEY, JSON.stringify(next));
+  let found = false;
+  const next = current.map((s) => {
+    if (s.id === updatedService.id) {
+      found = true;
+      return updatedService;
+    }
+    return s;
+  });
+  if (!found) {
+    next.push(updatedService);
+  }
+  try {
+    localStorage.setItem(SERVICES_DATA_KEY, JSON.stringify(next));
+  } catch (e) {
+    console.warn('LocalStorage save warning:', e);
+  }
   return next;
 }
 
 export function updateServiceImage(serviceId: string, imageUrl: string): Service[] {
   const current = getStoredServices();
   const next = current.map((s) => (s.id === serviceId ? { ...s, image: imageUrl } : s));
-  localStorage.setItem(SERVICES_DATA_KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(SERVICES_DATA_KEY, JSON.stringify(next));
+  } catch (e) {
+    console.warn('LocalStorage save warning:', e);
+  }
   return next;
 }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Booking, BookingStatus, BlockedSlot, Service, StudioConfig, BackdropOption } from '../types';
-import { BACKDROP_OPTIONS } from '../data/studioData';
+import { BACKDROP_OPTIONS, SERVICES } from '../data/studioData';
 import {
   getStoredBookings,
   updateBookingStatus,
@@ -47,6 +47,7 @@ import {
   AlertTriangle,
   Copy,
   Zap,
+  RotateCcw,
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, getAccessToken } from '../utils/googleAuth';
 import {
@@ -64,7 +65,9 @@ import {
   saveBookingToCloud,
   deleteBookingFromCloud,
   subscribeToBookings,
+  subscribeToServices,
 } from '../utils/firestoreService';
+import { compressServiceImage } from '../utils/imageCompressor';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -111,6 +114,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [newTierPeople, setNewTierPeople] = useState<number>(3);
   const [newTierPrice, setNewTierPrice] = useState<number>(150000);
+  const [isProcessingImage, setIsProcessingImage] = useState<boolean>(false);
+  const [isSavingService, setIsSavingService] = useState<boolean>(false);
 
   // Success Notification banner
   const [successNotif, setSuccessNotif] = useState<string>('');
@@ -250,6 +255,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // Load data on open
   React.useEffect(() => {
     let unsubBookings: (() => void) | undefined;
+    let unsubServices: (() => void) | undefined;
     if (isOpen) {
       const svcs = getStoredServices();
       const bks = getStoredBookings();
@@ -271,16 +277,29 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       unsubBookings = subscribeToBookings((cloudBookings) => {
         setBookings(cloudBookings);
       });
+
+      // Real-time services subscription from Cloud Firestore
+      unsubServices = subscribeToServices((cloudSvcs) => {
+        if (cloudSvcs && cloudSvcs.length > 0) {
+          setServices(cloudSvcs);
+          // If editingService is not selected or matches, keep synced
+          if (!selectedServiceId && cloudSvcs.length > 0) {
+            setSelectedServiceId(cloudSvcs[0].id);
+            setEditingService({ ...cloudSvcs[0] });
+          }
+        }
+      });
     }
     return () => {
       if (unsubBookings) unsubBookings();
+      if (unsubServices) unsubServices();
     };
   }, [isOpen]);
 
   // When selected service to edit changes
   const handleSelectServiceToEdit = (svcId: string) => {
     setSelectedServiceId(svcId);
-    const found = services.find((s) => s.id === svcId);
+    const found = services.find((s) => s.id === svcId) || SERVICES.find((s) => s.id === svcId);
     if (found) {
       setEditingService({ ...found });
     }
@@ -418,28 +437,75 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   };
 
   // Save Service Changes (Full Control over Description, Duration, Open/Close Time, Price)
-  const handleSaveService = (e: React.FormEvent) => {
+  const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingService) return;
 
-    const updatedList = updateService(editingService);
-    setServices(updatedList);
-    saveServiceToCloud(editingService).catch((err) => console.warn('Cloud sync error:', err));
-    onDataChanged();
-    setSuccessNotif(`Layanan "${editingService.name}" berhasil disimpan ke Cloud Database!`);
-    setTimeout(() => setSuccessNotif(''), 3000);
+    setIsSavingService(true);
+    try {
+      const updatedList = updateService(editingService);
+      setServices(updatedList);
+      await saveServiceToCloud(editingService);
+      onDataChanged();
+      setSuccessNotif(`Layanan "${editingService.name}" berhasil disimpan ke Cloud Database!`);
+      setTimeout(() => setSuccessNotif(''), 3000);
+    } catch (err: any) {
+      console.error('Save service error:', err);
+      alert('Gagal menyimpan layanan ke Cloud: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsSavingService(false);
+    }
   };
 
-  // Upload image for current service
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload image for current service with automatic compression (<100KB, 3:4 portrait)
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && editingService) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setEditingService({ ...editingService, image: dataUrl });
-      };
-      reader.readAsDataURL(file);
+      setIsProcessingImage(true);
+      try {
+        const compressedBase64 = await compressServiceImage(file);
+        const updated = { ...editingService, image: compressedBase64 };
+        setEditingService(updated);
+
+        // Instantly save to storage and cloud
+        const updatedList = updateService(updated);
+        setServices(updatedList);
+        await saveServiceToCloud(updated);
+        onDataChanged();
+        setSuccessNotif(`Foto layanan "${updated.name}" berhasil diperbarui & disimpan ke Cloud!`);
+        setTimeout(() => setSuccessNotif(''), 3000);
+      } catch (err: any) {
+        console.error('Image upload error:', err);
+        alert('Gagal memproses foto: ' + (err.message || 'File tidak didukung'));
+      } finally {
+        setIsProcessingImage(false);
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Reset photo to default studio illustration
+  const handleResetDefaultImage = async () => {
+    if (!editingService) return;
+    const defaultSvc = SERVICES.find((s) => s.id === editingService.id);
+    if (!defaultSvc) return;
+
+    if (window.confirm(`Kembalikan foto "${editingService.name}" ke foto ilustrasi bawaan studio?`)) {
+      setIsProcessingImage(true);
+      try {
+        const updated = { ...editingService, image: defaultSvc.image };
+        setEditingService(updated);
+        const updatedList = updateService(updated);
+        setServices(updatedList);
+        await saveServiceToCloud(updated);
+        onDataChanged();
+        setSuccessNotif(`Foto "${updated.name}" berhasil dikembalikan ke bawaan studio.`);
+        setTimeout(() => setSuccessNotif(''), 3000);
+      } catch (err: any) {
+        console.error('Reset image error:', err);
+      } finally {
+        setIsProcessingImage(false);
+      }
     }
   };
 
