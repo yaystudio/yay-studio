@@ -1,6 +1,6 @@
 import React from 'react';
 import { Service, StudioConfig } from '../types';
-import { STUDIO_CONFIG } from '../data/studioData';
+import { STUDIO_CONFIG, SERVICES } from '../data/studioData';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { formatIDR } from '../utils/storage';
 
@@ -16,9 +16,10 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
   config = STUDIO_CONFIG,
   onSelectService,
 }) => {
-  const selfReguler = services.find((s) => s.id === 'self-photo-reguler') || services[0];
-  const profileSelf = services.find((s) => s.id === 'profile-self-photo') || services[1];
-  const photographer = services.find((s) => s.id === 'photo-by-photographer') || services[2];
+  const defaultPhotographer = SERVICES.find((s) => s.id === 'photo-by-photographer');
+  const selfReguler = services.find((s) => s.id === 'self-photo-reguler') || services[0] || SERVICES[0];
+  const profileSelf = services.find((s) => s.id === 'profile-self-photo') || services[1] || SERVICES[1];
+  const photographer = services.find((s) => s.id === 'photo-by-photographer') || defaultPhotographer || services[2];
 
   // Clean WhatsApp number
   const waNumber = (config.whatsappNumber || STUDIO_CONFIG.whatsappNumber).replace(/\D/g, '');

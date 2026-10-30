@@ -10,6 +10,7 @@ import {
 import { db, auth } from './firebase';
 import { Service, StudioConfig, Booking } from '../types';
 import { getStoredServices, getStoredStudioConfig, getStoredBookings } from './storage';
+import { SERVICES } from '../data/studioData';
 
 export enum OperationType {
   CREATE = 'create',
@@ -84,6 +85,26 @@ export function subscribeToServices(
           snapshot.forEach((d) => {
             loaded.push(d.data() as Service);
           });
+
+          // Ensure all default services exist, especially Photo by Photographer
+          for (const defSvc of SERVICES) {
+            if (!loaded.some((s) => s.id === defSvc.id)) {
+              loaded.push({ ...defSvc });
+              // Persist missing service into Cloud Firestore
+              setDoc(doc(db, 'services', defSvc.id), defSvc).catch((saveErr) => {
+                console.warn('Could not auto-seed missing service to Firestore:', saveErr);
+              });
+            }
+          }
+
+          // Canonical order: self-photo-reguler, profile-self-photo, photo-by-photographer
+          const orderMap: Record<string, number> = {
+            'self-photo-reguler': 0,
+            'profile-self-photo': 1,
+            'photo-by-photographer': 2,
+          };
+          loaded.sort((a, b) => (orderMap[a.id] ?? 99) - (orderMap[b.id] ?? 99));
+
           onServicesUpdate(loaded);
           // Sync to localStorage as offline cache
           try {

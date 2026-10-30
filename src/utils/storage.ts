@@ -26,6 +26,26 @@ export function getStoredServices(): Service[] {
       }
       return updatedSvc;
     });
+
+    // Ensure all default services (including Photo by Photographer) exist
+    for (const defSvc of SERVICES) {
+      if (!merged.some((s) => s.id === defSvc.id)) {
+        merged.push({ ...defSvc });
+      }
+    }
+
+    // Sort to maintain canonical order: self-photo-reguler, profile-self-photo, photo-by-photographer
+    const orderMap: Record<string, number> = {
+      'self-photo-reguler': 0,
+      'profile-self-photo': 1,
+      'photo-by-photographer': 2,
+    };
+    merged.sort((a, b) => (orderMap[a.id] ?? 99) - (orderMap[b.id] ?? 99));
+
+    try {
+      localStorage.setItem(SERVICES_DATA_KEY, JSON.stringify(merged));
+    } catch {}
+
     return merged;
   } catch (e) {
     console.error('Failed to load services from localStorage', e);
