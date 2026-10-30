@@ -176,3 +176,101 @@ export function generateGoogleCalendarWebUrl(booking: Booking, durationMinutes =
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${googleWebDatesParam}&details=${details}&location=${location}&ctz=Asia/Makassar`;
 }
+
+const AUTO_SYNC_KEY = 'yay_studio_auto_sync_gcal_enabled';
+
+export function getAutoSyncEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  const val = localStorage.getItem(AUTO_SYNC_KEY);
+  return val === null ? true : val === 'true';
+}
+
+export function setAutoSyncEnabled(enabled: boolean): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(AUTO_SYNC_KEY, String(enabled));
+  }
+}
+
+/**
+ * Automatically syncs all pending (unsynced) bookings to Google Calendar
+ */
+export async function syncAllPendingBookings(
+  bookings: Booking[],
+  accessToken: string,
+  onProgress?: (done: number, total: number) => void
+): Promise<{ successCount: number; totalPending: number; errors: string[] }> {
+  const synced = getSyncedCalendarRecords();
+  const pending = bookings.filter((b) => !synced[b.id] && b.status !== 'cancelled');
+  let successCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < pending.length; i++) {
+    const booking = pending[i];
+    const res = await createGoogleCalendarEvent(booking, accessToken, 30);
+    if (res.success) {
+      successCount++;
+    } else {
+      errors.push(`#${booking.id}: ${res.error || 'Gagal sinkron'}`);
+    }
+    if (onProgress) {
+      onProgress(i + 1, pending.length);
+    }
+  }
+
+  return { successCount, totalPending: pending.length, errors };
+}
+
+/**
+ * Generates an iCalendar (.ics) file content string
+ */
+export function generateICSContent(booking: Booking, durationMinutes = 30): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const [hourStr, minStr] = booking.timeSlot.split(':');
+  const startHour = parseInt(hourStr || '10', 10);
+  const startMin = parseInt(minStr || '00', 10);
+  const totalStartMinutes = startHour * 60 + startMin;
+  const totalEndMinutes = totalStartMinutes + durationMinutes;
+  const endHour = Math.floor(totalEndMinutes / 60);
+  const endMin = totalEndMinutes % 60;
+  const cleanDate = booking.date.replace(/-/g, '');
+  const dtStart = `${cleanDate}T${pad(startHour)}${pad(startMin)}00`;
+  const dtEnd = `${cleanDate}T${pad(endHour)}${pad(endMin)}00`;
+
+  const icsLines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Yay Photo Studio//Makassar//ID',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:yay-photo-${booking.id}@yayphotostudio.com`,
+    `DTSTAMP:${cleanDate}T000000Z`,
+    `DTSTART;TZID=Asia/Makassar:${dtStart}`,
+    `DTEND;TZID=Asia/Makassar:${dtEnd}`,
+    `SUMMARY:Yay Photo Studio: ${booking.serviceName} (#${booking.id})`,
+    `DESCRIPTION:Sesi Foto Yay Photo Studio\\nKode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nBackdrop: ${booking.backdrop}\\nNama: ${booking.customer.name} (${booking.peopleCount} Orang)\\nTotal: ${formatIDR(booking.totalPrice)}\\nLokasi: ${STUDIO_CONFIG.address}`,
+    `LOCATION:${STUDIO_CONFIG.address}`,
+    'STATUS:CONFIRMED',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+
+  return icsLines.join('\r\n');
+}
+
+/**
+ * Triggers a browser download of the .ics iCalendar file for iOS / Android / Outlook
+ */
+export function downloadCalendarICSFile(booking: Booking, durationMinutes = 30): void {
+  const ics = generateICSContent(booking, durationMinutes);
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `YayStudio-Booking-${booking.id}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+

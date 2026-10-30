@@ -5,6 +5,8 @@ import { generateBookingId, saveBooking, getMakassarDateTime } from '../utils/st
 import { CalendlyDateTimeSelector } from './CalendlyDateTimeSelector';
 import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
+import { getAccessToken } from '../utils/googleAuth';
+import { createGoogleCalendarEvent } from '../utils/googleCalendar';
 
 interface BookingStepModalProps {
   isOpen: boolean;
@@ -39,7 +41,7 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
   if (!isOpen || !service) return null;
 
   // Handle final confirmation from EnterDetailsForm
-  const handleFinalConfirmBooking = (finalData: {
+  const handleFinalConfirmBooking = async (finalData: {
     backdrop: string;
     peopleCount: number;
     totalPrice: number;
@@ -69,6 +71,19 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
     };
 
     saveBooking(newBooking);
+
+    // Auto-sync to Google Calendar if access token is active
+    try {
+      const token = await getAccessToken();
+      if (token) {
+        createGoogleCalendarEvent(newBooking, token, service.durationMinutes || 30).catch((err) => {
+          console.warn('Auto-sync calendar background note:', err);
+        });
+      }
+    } catch (e) {
+      console.warn('Auto-sync check error:', e);
+    }
+
     onBookingSuccess(newBooking);
     onClose();
   };

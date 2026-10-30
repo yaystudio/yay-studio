@@ -46,6 +46,7 @@ import {
   Palette,
   AlertTriangle,
   Copy,
+  Zap,
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, getAccessToken } from '../utils/googleAuth';
 import {
@@ -53,6 +54,9 @@ import {
   getSyncedCalendarRecords,
   generateGoogleCalendarWebUrl,
   SyncedCalendarRecord,
+  getAutoSyncEnabled,
+  setAutoSyncEnabled,
+  syncAllPendingBookings,
 } from '../utils/googleCalendar';
 
 interface AdminPanelModalProps {
@@ -82,6 +86,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [syncingBookingId, setSyncingBookingId] = useState<string>('');
   const [syncAllLoading, setSyncAllLoading] = useState<boolean>(false);
   const [syncedRecords, setSyncedRecords] = useState<Record<string, SyncedCalendarRecord>>(getSyncedCalendarRecords());
+  const [autoSyncEnabled, setAutoSyncEnabledState] = useState<boolean>(getAutoSyncEnabled());
+  const [isAutoSyncing, setIsAutoSyncing] = useState<boolean>(false);
 
   // Booking list filters & search
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -190,22 +196,56 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     });
   };
 
+  // Background auto-sync function
+  const triggerAutoSync = async (passedToken?: string) => {
+    try {
+      const token = passedToken || (await getAccessToken());
+      if (!token || !autoSyncEnabled) return;
+      setIsAutoSyncing(true);
+      const res = await syncAllPendingBookings(bookings, token);
+      if (res.successCount > 0) {
+        setSyncedRecords(getSyncedCalendarRecords());
+        setSuccessNotif(`⚡ Auto-Sync: ${res.successCount} reservasi baru otomatis tersinkron ke Google Calendar!`);
+        setTimeout(() => setSuccessNotif(''), 4000);
+      }
+    } catch (e) {
+      console.warn('Auto-sync check error:', e);
+    } finally {
+      setIsAutoSyncing(false);
+    }
+  };
+
+  const handleToggleAutoSync = () => {
+    const nextVal = !autoSyncEnabled;
+    setAutoSyncEnabledState(nextVal);
+    setAutoSyncEnabled(nextVal);
+    if (nextVal && googleUser) {
+      triggerAutoSync();
+    }
+  };
+
   // Subscribe to Google Auth
   React.useEffect(() => {
     const unsubscribe = initAuth(
-      (user) => setGoogleUser(user),
+      (user, token) => {
+        setGoogleUser(user);
+        if (token && autoSyncEnabled) {
+          triggerAutoSync(token);
+        }
+      },
       () => setGoogleUser(null)
     );
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, []);
+  }, [autoSyncEnabled, bookings.length]);
 
   // Load data on open
   React.useEffect(() => {
     if (isOpen) {
       const svcs = getStoredServices();
-      setBookings(getStoredBookings());
+      const bks = getStoredBookings();
+      setBookings(bks);
       setBlockedSlots(getStoredBlockedSlots());
       setServices(svcs);
       setStudioConfig(getStoredStudioConfig());
@@ -213,6 +253,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       if (svcs.length > 0 && !selectedServiceId) {
         setSelectedServiceId(svcs[0].id);
         setEditingService({ ...svcs[0] });
+      }
+      // Check if auto-sync is enabled on modal open
+      if (autoSyncEnabled) {
+        triggerAutoSync();
       }
     }
   }, [isOpen]);
@@ -236,6 +280,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         setGoogleUser(res.user);
         setSuccessNotif(`Google Calendar terhubung (${res.user.email})`);
         setTimeout(() => setSuccessNotif(''), 3000);
+        if (autoSyncEnabled && res.accessToken) {
+          triggerAutoSync(res.accessToken);
+        }
       }
     } catch (err: any) {
       console.error('Google Sign In error:', err);
@@ -302,13 +349,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         throw new Error('Izin Google Calendar diperlukan untuk sinkronisasi.');
       }
 
-      let count = 0;
-      for (const b of activeBookings) {
-        await createGoogleCalendarEvent(b, token, 30);
-        count++;
-      }
+      const res = await syncAllPendingBookings(activeBookings, token);
       setSyncedRecords(getSyncedCalendarRecords());
-      setSuccessNotif(`${count} reservasi berhasil disinkronkan ke Google Calendar!`);
+      if (res.successCount > 0) {
+        setSuccessNotif(`⚡ Berhasil! ${res.successCount} reservasi disinkronkan ke Google Calendar!`);
+      } else if (res.totalPending === 0) {
+        setSuccessNotif('Semua reservasi aktif sudah tersinkron ke Google Calendar.');
+      }
+      if (res.errors.length > 0) {
+        setGoogleError(`Gagal pada beberapa booking: ${res.errors.slice(0, 2).join(', ')}`);
+      }
       setTimeout(() => setSuccessNotif(''), 4000);
     } catch (err: any) {
       setGoogleError(err.message || 'Gagal menyinkronkan seluruh booking.');
@@ -1300,18 +1350,29 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           <button
                             type="button"
                             onClick={handleSyncAllBookings}
-                            disabled={syncAllLoading}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-xl transition-all shadow"
+                            disabled={syncAllLoading || isAutoSyncing}
+                            className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all shadow active:scale-95 text-white ${
+                              bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length > 0
+                                ? 'bg-blue-600 hover:bg-blue-700'
+                                : 'bg-emerald-600 hover:bg-emerald-700'
+                            }`}
                           >
-                            {syncAllLoading ? (
+                            {syncAllLoading || isAutoSyncing ? (
                               <>
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 <span>Menyinkronkan...</span>
                               </>
+                            ) : bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length > 0 ? (
+                              <>
+                                <Zap className="w-3.5 h-3.5 fill-current" />
+                                <span>
+                                  Sinkronkan ({bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length} Belum)
+                                </span>
+                              </>
                             ) : (
                               <>
-                                <CalendarCheck className="w-3.5 h-3.5" />
-                                <span>Sinkronkan Semua Booking</span>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Semua Booking Tersinkron</span>
                               </>
                             )}
                           </button>
@@ -1356,6 +1417,79 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           <span>Sign in with Google</span>
                         </button>
                       )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Auto-Sync Setting & Live Metrics Card */}
+                <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        autoSyncEnabled ? 'bg-amber-100 text-amber-700' : 'bg-neutral-100 text-neutral-400'
+                      }`}>
+                        <Zap className="w-5 h-5 fill-current" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h5 className="font-bold text-sm text-neutral-950">
+                            Auto-Sync Otomatis Reservasi
+                          </h5>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                            autoSyncEnabled
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+                          }`}>
+                            {autoSyncEnabled ? 'AKTIF' : 'NONAKTIF'}
+                          </span>
+                          {isAutoSyncing && (
+                            <span className="flex items-center gap-1 text-[10px] text-blue-600 font-medium">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>Menyinkronkan otomatis...</span>
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          Saat Anda terhubung dengan Google, semua booking baru akan langsung otomatis dikirim ke Google Calendar studio tanpa perlu klik "Sync Ulang" satu per satu.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleToggleAutoSync}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                          autoSyncEnabled ? 'bg-emerald-600' : 'bg-neutral-300'
+                        }`}
+                        title="Aktifkan / Nonaktifkan Auto-Sync Otomatis"
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                            autoSyncEnabled ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Metric Counters */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-2 border-t border-neutral-100 text-center">
+                    <div className="bg-neutral-50 p-2.5 rounded-xl border border-neutral-200/80">
+                      <span className="text-[10px] font-mono uppercase text-neutral-400 block font-semibold">TOTAL RESERVASI</span>
+                      <span className="text-base font-bold font-mono text-neutral-900">{bookings.length}</span>
+                    </div>
+                    <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/80">
+                      <span className="text-[10px] font-mono uppercase text-emerald-700 block font-semibold">TERSINKRON</span>
+                      <span className="text-base font-bold font-mono text-emerald-800">
+                        {bookings.filter((b) => syncedRecords[b.id]).length}
+                      </span>
+                    </div>
+                    <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200/80">
+                      <span className="text-[10px] font-mono uppercase text-amber-700 block font-semibold">BELUM SYNC</span>
+                      <span className="text-base font-bold font-mono text-amber-900">
+                        {bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length}
+                      </span>
                     </div>
                   </div>
                 </div>
