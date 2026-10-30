@@ -1,0 +1,6 @@
+{
+  "summary":  "Rencana arsitektur dan implementasi website booking resmi Yay Photo Studio dengan estetika monokrom minimalis ala Korean photo studio. Mencakup booking 3 layanan (Self Photo Reguler, Profile Self Photo, Photo by Photographer), kalender interaktif pemilihan slot waktu otomatis, sistem konfirmasi email ke customer dan admin (yayphotostudio@gmail.com), opsi add-on, serta panel manajemen admin untuk memantau jadwal dan ketersediaan slot.",
+  "updatedAt":  "2026-10-30T09:50:19.571709842Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
