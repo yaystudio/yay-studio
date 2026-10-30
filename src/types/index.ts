@@ -57,6 +57,8 @@ export interface Booking {
   paymentNote: string; // "Pembayaran dapat dilakukan saat di studio"
   status: BookingStatus;
   createdAt: string;
+  syncedToCalendar?: boolean;
+  calendarEventId?: string;
 }
 
 export interface BlockedSlot {

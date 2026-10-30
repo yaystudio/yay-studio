@@ -58,6 +58,7 @@ import {
   getAutoSyncEnabled,
   setAutoSyncEnabled,
   syncAllPendingBookings,
+  isBookingSynced,
 } from '../utils/googleCalendar';
 import {
   saveServiceToCloud,
@@ -210,16 +211,50 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   };
 
   // Background auto-sync function
-  const triggerAutoSync = async (passedToken?: string) => {
+  const triggerAutoSync = async (passedToken?: string, targetBookings?: Booking[]) => {
     try {
+      if (!autoSyncEnabled) return;
       const token = passedToken || (await getAccessToken());
-      if (!token || !autoSyncEnabled) return;
+      if (!token) return;
+
+      const activeBookings =
+        targetBookings && targetBookings.length > 0
+          ? targetBookings
+          : bookings.length > 0
+          ? bookings
+          : getStoredBookings();
+
+      if (!activeBookings || activeBookings.length === 0) return;
+
+      const currentSynced = getSyncedCalendarRecords();
+      const pending = activeBookings.filter(
+        (b) => !isBookingSynced(b, currentSynced) && b.status !== 'cancelled'
+      );
+
+      if (pending.length === 0) return;
+
       setIsAutoSyncing(true);
-      const res = await syncAllPendingBookings(bookings, token);
+      const res = await syncAllPendingBookings(pending, token);
+      setSyncedRecords(getSyncedCalendarRecords());
+
       if (res.successCount > 0) {
-        setSyncedRecords(getSyncedCalendarRecords());
-        setSuccessNotif(`⚡ Auto-Sync: ${res.successCount} reservasi baru otomatis tersinkron ke Google Calendar!`);
-        setTimeout(() => setSuccessNotif(''), 4000);
+        setSuccessNotif(
+          `⚡ Auto-Sync: ${res.successCount} reservasi berhasil otomatis tersinkron ke Google Calendar!`
+        );
+        setTimeout(() => setSuccessNotif(''), 4500);
+        onDataChanged();
+      }
+      if (res.errors.length > 0) {
+        const errText = res.errors.join(' ');
+        if (
+          errText.includes('401') ||
+          errText.toLowerCase().includes('berakhir') ||
+          errText.toLowerCase().includes('unauthorized')
+        ) {
+          setGoogleError(
+            'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" untuk menghubungkan ulang.'
+          );
+        }
       }
     } catch (e) {
       console.warn('Auto-sync check error:', e);
@@ -232,7 +267,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     const nextVal = !autoSyncEnabled;
     setAutoSyncEnabledState(nextVal);
     setAutoSyncEnabled(nextVal);
-    if (nextVal && googleUser) {
+    if (nextVal) {
       triggerAutoSync();
     }
   };
@@ -251,7 +286,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [autoSyncEnabled, bookings.length]);
+  }, [autoSyncEnabled]);
+
+  // Auto-sync whenever user opens Calendar tab or when auto-sync is active
+  React.useEffect(() => {
+    if (isOpen && activeTab === 'calendar' && autoSyncEnabled && googleUser) {
+      triggerAutoSync();
+    }
+  }, [activeTab, isOpen, autoSyncEnabled, !!googleUser, bookings.length]);
 
   // Load data on open
   React.useEffect(() => {
@@ -271,12 +313,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       }
       // Check if auto-sync is enabled on modal open
       if (autoSyncEnabled) {
-        triggerAutoSync();
+        triggerAutoSync(undefined, bks);
       }
 
       // Real-time booking subscription from Cloud Firestore
       unsubBookings = subscribeToBookings((cloudBookings) => {
         setBookings(cloudBookings);
+        if (autoSyncEnabled) {
+          triggerAutoSync(undefined, cloudBookings);
+        }
       });
 
       // Real-time services subscription from Cloud Firestore
@@ -367,9 +412,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Sync All Active Bookings to Google Calendar
   const handleSyncAllBookings = async () => {
-    const activeBookings = bookings.filter((b) => b.status !== 'cancelled');
-    if (activeBookings.length === 0) {
-      alert('Tidak ada reservasi aktif untuk disinkronkan.');
+    const activeBookings = bookings.length > 0 ? bookings : getStoredBookings();
+    const unsynced = activeBookings.filter(
+      (b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled'
+    );
+    if (unsynced.length === 0) {
+      setSuccessNotif('Semua reservasi aktif sudah tersinkron ke Google Calendar.');
+      setTimeout(() => setSuccessNotif(''), 3000);
       return;
     }
 
@@ -385,15 +434,27 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         throw new Error('Izin Google Calendar diperlukan untuk sinkronisasi.');
       }
 
-      const res = await syncAllPendingBookings(activeBookings, token);
+      const res = await syncAllPendingBookings(unsynced, token);
       setSyncedRecords(getSyncedCalendarRecords());
       if (res.successCount > 0) {
         setSuccessNotif(`⚡ Berhasil! ${res.successCount} reservasi disinkronkan ke Google Calendar!`);
+        onDataChanged();
       } else if (res.totalPending === 0) {
         setSuccessNotif('Semua reservasi aktif sudah tersinkron ke Google Calendar.');
       }
       if (res.errors.length > 0) {
-        setGoogleError(`Gagal pada beberapa booking: ${res.errors.slice(0, 2).join(', ')}`);
+        const errText = res.errors.join(' ');
+        if (
+          errText.includes('401') ||
+          errText.toLowerCase().includes('berakhir') ||
+          errText.toLowerCase().includes('unauthorized')
+        ) {
+          setGoogleError(
+            'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" lagi untuk login ulang akun Google.'
+          );
+        } else {
+          setGoogleError(`Gagal pada beberapa booking: ${res.errors.slice(0, 2).join(', ')}`);
+        }
       }
       setTimeout(() => setSuccessNotif(''), 4000);
     } catch (err: any) {
@@ -1443,7 +1504,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             onClick={handleSyncAllBookings}
                             disabled={syncAllLoading || isAutoSyncing}
                             className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all shadow active:scale-95 text-white ${
-                              bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length > 0
+                              bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length > 0
                                 ? 'bg-blue-600 hover:bg-blue-700'
                                 : 'bg-emerald-600 hover:bg-emerald-700'
                             }`}
@@ -1453,11 +1514,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 <span>Menyinkronkan...</span>
                               </>
-                            ) : bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length > 0 ? (
+                            ) : bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length > 0 ? (
                               <>
                                 <Zap className="w-3.5 h-3.5 fill-current" />
                                 <span>
-                                  Sinkronkan ({bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length} Belum)
+                                  Sinkronkan ({bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length} Belum)
                                 </span>
                               </>
                             ) : (
@@ -1573,13 +1634,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/80">
                       <span className="text-[10px] font-mono uppercase text-emerald-700 block font-semibold">TERSINKRON</span>
                       <span className="text-base font-bold font-mono text-emerald-800">
-                        {bookings.filter((b) => syncedRecords[b.id]).length}
+                        {bookings.filter((b) => isBookingSynced(b, syncedRecords)).length}
                       </span>
                     </div>
                     <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200/80">
                       <span className="text-[10px] font-mono uppercase text-amber-700 block font-semibold">BELUM SYNC</span>
                       <span className="text-base font-bold font-mono text-amber-900">
-                        {bookings.filter((b) => !syncedRecords[b.id] && b.status !== 'cancelled').length}
+                        {bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length}
                       </span>
                     </div>
                   </div>
@@ -1689,7 +1750,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <div className="space-y-2.5">
                     {bookings.map((b) => {
                       const record = syncedRecords[b.id];
-                      const isSynced = Boolean(record);
+                      const isSynced = isBookingSynced(b, syncedRecords);
                       const isCurrentlySyncing = syncingBookingId === b.id;
 
                       return (

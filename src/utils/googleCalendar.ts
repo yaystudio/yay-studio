@@ -1,6 +1,7 @@
 import { Booking } from '../types';
-import { formatIDR, formatDateIndo } from './storage';
+import { formatIDR, formatDateIndo, saveBooking } from './storage';
 import { STUDIO_CONFIG } from '../data/studioData';
+import { saveBookingToCloud } from './firestoreService';
 
 const SYNCED_CALENDAR_EVENTS_KEY = 'yay_studio_google_calendar_events_v1';
 
@@ -23,7 +24,19 @@ export function getSyncedCalendarRecords(): Record<string, SyncedCalendarRecord>
 export function saveSyncedCalendarRecord(record: SyncedCalendarRecord): void {
   const all = getSyncedCalendarRecords();
   all[record.bookingId] = record;
-  localStorage.setItem(SYNCED_CALENDAR_EVENTS_KEY, JSON.stringify(all));
+  try {
+    localStorage.setItem(SYNCED_CALENDAR_EVENTS_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+/**
+ * Checks whether a booking has already been synced to Google Calendar,
+ * either in localStorage record, or via persistent Cloud Firestore fields.
+ */
+export function isBookingSynced(booking: Booking, syncedMap?: Record<string, SyncedCalendarRecord>): boolean {
+  if (booking.syncedToCalendar || !!booking.calendarEventId) return true;
+  const map = syncedMap || getSyncedCalendarRecords();
+  return !!map[booking.id];
 }
 
 /**
@@ -125,6 +138,12 @@ export async function createGoogleCalendarEvent(
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        try {
+          localStorage.removeItem('yay_studio_gcal_access_token_v1');
+        } catch {}
+        throw new Error('Sesi Google Calendar berakhir (401 Unauthorized). Silakan klik "Sinkronkan" untuk menghubungkan kembali akun Google.');
+      }
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData?.error?.message || `Google Calendar API error: ${response.status}`);
     }
@@ -138,6 +157,16 @@ export async function createGoogleCalendarEvent(
       syncedAt: new Date().toISOString(),
     };
     saveSyncedCalendarRecord(record);
+
+    // Update the booking object and persist to Firestore + local storage
+    booking.syncedToCalendar = true;
+    booking.calendarEventId = data.id;
+    try {
+      saveBooking(booking);
+      saveBookingToCloud(booking).catch((cloudErr) => {
+        console.warn('Booking sync to Firestore note:', cloudErr);
+      });
+    } catch {}
 
     return {
       success: true,
@@ -200,7 +229,7 @@ export async function syncAllPendingBookings(
   onProgress?: (done: number, total: number) => void
 ): Promise<{ successCount: number; totalPending: number; errors: string[] }> {
   const synced = getSyncedCalendarRecords();
-  const pending = bookings.filter((b) => !synced[b.id] && b.status !== 'cancelled');
+  const pending = bookings.filter((b) => !isBookingSynced(b, synced) && b.status !== 'cancelled');
   let successCount = 0;
   const errors: string[] = [];
 
