@@ -12,10 +12,12 @@ import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { Service, Booking, StudioConfig } from './types';
 import { getStoredServices, getStoredStudioConfig } from './utils/storage';
+import { subscribeToServices, subscribeToStudioConfig } from './utils/firestoreService';
+import { testFirestoreConnection } from './utils/firebase';
 
 export default function App() {
-  // Services & Studio Config with full admin control
-  const [services, setServices] = useState<Service[]>([]);
+  // Services & Studio Config with full admin control & cloud sync
+  const [services, setServices] = useState<Service[]>(getStoredServices());
   const [studioConfig, setStudioConfig] = useState<StudioConfig>(getStoredStudioConfig());
   const [dataVersion, setDataVersion] = useState(0);
 
@@ -31,10 +33,34 @@ export default function App() {
   // Admin Panel Modal State
   const [isAdminOpen, setIsAdminOpen] = useState(false);
 
-  // Load services and studio config from storage
+  // Test Firestore connection on boot as mandated by Firestore guidelines
   useEffect(() => {
+    testFirestoreConnection();
+  }, []);
+
+  // Real-time Cloud Firestore synchronization across all browsers and devices
+  useEffect(() => {
+    // Initial local read for instant render
     setServices(getStoredServices());
     setStudioConfig(getStoredStudioConfig());
+
+    // Subscribe to cloud Firestore changes
+    const unsubServices = subscribeToServices((cloudServices) => {
+      if (cloudServices && cloudServices.length > 0) {
+        setServices(cloudServices);
+      }
+    });
+
+    const unsubConfig = subscribeToStudioConfig((cloudConfig) => {
+      if (cloudConfig) {
+        setStudioConfig(cloudConfig);
+      }
+    });
+
+    return () => {
+      unsubServices();
+      unsubConfig();
+    };
   }, [dataVersion]);
 
   // When user clicks any service card on the homepage

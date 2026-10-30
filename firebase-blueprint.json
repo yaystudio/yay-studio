@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Service": {
+      "title": "Service",
+      "description": "Studio photo service offering with descriptions, pricing, duration, and backdrops",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "badge": { "type": "string" },
+        "price": { "type": "number" },
+        "durationMinutes": { "type": "number" },
+        "maxPeople": { "type": "number" },
+        "extraPersonPrice": { "type": "number" },
+        "image": { "type": "string" },
+        "description": { "type": "string" },
+        "openingHour": { "type": "string" },
+        "closingHour": { "type": "string" }
+      },
+      "required": ["id", "name", "price", "durationMinutes"]
+    },
+    "StudioConfig": {
+      "title": "StudioConfig",
+      "description": "General studio configuration and contact details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "instagram": { "type": "string" },
+        "whatsappNumber": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "adminPin": { "type": "string" },
+        "openTime": { "type": "string" },
+        "closeTime": { "type": "string" },
+        "defaultDurationMinutes": { "type": "number" }
+      },
+      "required": ["name", "whatsappNumber"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Customer booking reservation record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "date": { "type": "string" },
+        "timeSlot": { "type": "string" },
+        "backdrop": { "type": "string" },
+        "peopleCount": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "paymentNote": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "serviceName", "date", "timeSlot", "peopleCount", "totalPrice"]
+    }
+  },
+  "firestore": {
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Publicly readable studio services, editable by studio admin"
+    },
+    "/config/studio": {
+      "schema": "StudioConfig",
+      "description": "Studio global configuration details"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Customer bookings and reservations created by visitors or admin"
+    }
+  }
+}

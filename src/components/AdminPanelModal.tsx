@@ -58,6 +58,13 @@ import {
   setAutoSyncEnabled,
   syncAllPendingBookings,
 } from '../utils/googleCalendar';
+import {
+  saveServiceToCloud,
+  saveStudioConfigToCloud,
+  saveBookingToCloud,
+  deleteBookingFromCloud,
+  subscribeToBookings,
+} from '../utils/firestoreService';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -242,6 +249,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Load data on open
   React.useEffect(() => {
+    let unsubBookings: (() => void) | undefined;
     if (isOpen) {
       const svcs = getStoredServices();
       const bks = getStoredBookings();
@@ -258,7 +266,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       if (autoSyncEnabled) {
         triggerAutoSync();
       }
+
+      // Real-time booking subscription from Cloud Firestore
+      unsubBookings = subscribeToBookings((cloudBookings) => {
+        setBookings(cloudBookings);
+      });
     }
+    return () => {
+      if (unsubBookings) unsubBookings();
+    };
   }, [isOpen]);
 
   // When selected service to edit changes
@@ -384,6 +400,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const handleStatusChange = (bookingId: string, newStatus: BookingStatus) => {
     const updated = updateBookingStatus(bookingId, newStatus);
     setBookings(updated);
+    const target = updated.find((b) => b.id === bookingId);
+    if (target) {
+      saveBookingToCloud(target).catch((err) => console.warn('Cloud sync error:', err));
+    }
     onDataChanged();
   };
 
@@ -392,10 +412,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     if (window.confirm('Hapus reservasi ini dari sistem?')) {
       const updated = deleteBooking(bookingId);
       setBookings(updated);
+      deleteBookingFromCloud(bookingId).catch((err) => console.warn('Cloud sync error:', err));
       onDataChanged();
     }
   };
-
 
   // Save Service Changes (Full Control over Description, Duration, Open/Close Time, Price)
   const handleSaveService = (e: React.FormEvent) => {
@@ -404,8 +424,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
     const updatedList = updateService(editingService);
     setServices(updatedList);
+    saveServiceToCloud(editingService).catch((err) => console.warn('Cloud sync error:', err));
     onDataChanged();
-    setSuccessNotif(`Layanan "${editingService.name}" berhasil diperbarui!`);
+    setSuccessNotif(`Layanan "${editingService.name}" berhasil disimpan ke Cloud Database!`);
     setTimeout(() => setSuccessNotif(''), 3000);
   };
 
@@ -427,8 +448,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     e.preventDefault();
     const updated = updateStudioConfig(studioConfig);
     setStudioConfig(updated);
+    saveStudioConfigToCloud(updated).catch((err) => console.warn('Cloud sync error:', err));
     onDataChanged();
-    setSuccessNotif('Pengaturan informasi studio berhasil disimpan!');
+    setSuccessNotif('Pengaturan informasi studio berhasil disimpan ke Cloud Database!');
     setTimeout(() => setSuccessNotif(''), 3000);
   };
 

@@ -7,6 +7,7 @@ import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
 import { getAccessToken } from '../utils/googleAuth';
 import { createGoogleCalendarEvent } from '../utils/googleCalendar';
+import { saveBookingToCloud } from '../utils/firestoreService';
 
 interface BookingStepModalProps {
   isOpen: boolean;
@@ -71,6 +72,11 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
     };
 
     saveBooking(newBooking);
+
+    // Persist to Cloud Firestore across all devices
+    saveBookingToCloud(newBooking).catch((err) => {
+      console.warn('Cloud booking save note:', err);
+    });
 
     // Auto-sync to Google Calendar if access token is active
     try {
