@@ -61,6 +61,45 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 /**
+ * Recursively cleans an object for Firestore by removing any fields with `undefined` values.
+ * Firestore setDoc/updateDoc throws an error if any property is `undefined`.
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return {} as T;
+  }
+
+  function deepClean(item: any): any {
+    if (item === null || item === undefined) {
+      return undefined;
+    }
+    if (Array.isArray(item)) {
+      return item
+        .map(deepClean)
+        .filter((val) => val !== undefined);
+    }
+    if (typeof item === 'object') {
+      const res: Record<string, any> = {};
+      for (const [k, v] of Object.entries(item)) {
+        const cleanedVal = deepClean(v);
+        if (cleanedVal !== undefined) {
+          res[k] = cleanedVal;
+        }
+      }
+      return res;
+    }
+    return item;
+  }
+
+  const result = deepClean(data);
+  try {
+    return JSON.parse(JSON.stringify(result));
+  } catch {
+    return result;
+  }
+}
+
+/**
  * Real-time subscription to services collection.
  * Automatically seeds Firestore if empty, ensuring all devices see custom data.
  */
@@ -77,7 +116,7 @@ export function subscribeToServices(
           // Seed from local/default services if collection is fresh
           const initial = getStoredServices();
           for (const svc of initial) {
-            await setDoc(doc(db, 'services', svc.id), svc);
+            await setDoc(doc(db, 'services', svc.id), cleanForFirestore(svc));
           }
           onServicesUpdate(initial);
         } else {
@@ -93,7 +132,7 @@ export function subscribeToServices(
             if (!loaded.some((s) => s.id === defSvc.id)) {
               loaded.push({ ...defSvc });
               // Persist missing service into Cloud Firestore
-              setDoc(doc(db, 'services', defSvc.id), defSvc).catch((saveErr) => {
+              setDoc(doc(db, 'services', defSvc.id), cleanForFirestore(defSvc)).catch((saveErr) => {
                 console.warn('Could not auto-seed missing service to Firestore:', saveErr);
               });
             }
@@ -139,7 +178,7 @@ export function subscribeToStudioConfig(
       try {
         if (!snapshot.exists()) {
           const initialConfig = getStoredStudioConfig();
-          await setDoc(configDocRef, initialConfig);
+          await setDoc(configDocRef, cleanForFirestore(initialConfig));
           onConfigUpdate(initialConfig);
         } else {
           const data = snapshot.data() as StudioConfig;
@@ -174,7 +213,7 @@ export function subscribeToBookings(
           const initialBookings = getStoredBookings();
           if (initialBookings.length > 0) {
             for (const b of initialBookings) {
-              await setDoc(doc(db, 'bookings', b.id), b);
+              await setDoc(doc(db, 'bookings', b.id), cleanForFirestore(b));
             }
           }
           onBookingsUpdate(initialBookings);
@@ -206,7 +245,8 @@ export function subscribeToBookings(
 export async function saveServiceToCloud(service: Service): Promise<void> {
   const path = `services/${service.id}`;
   try {
-    await setDoc(doc(db, 'services', service.id), service);
+    const cleaned = cleanForFirestore(service);
+    await setDoc(doc(db, 'services', service.id), cleaned);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -218,7 +258,8 @@ export async function saveServiceToCloud(service: Service): Promise<void> {
 export async function saveStudioConfigToCloud(config: StudioConfig): Promise<void> {
   const path = 'config/studio';
   try {
-    await setDoc(doc(db, 'config', 'studio'), config);
+    const cleaned = cleanForFirestore(config);
+    await setDoc(doc(db, 'config', 'studio'), cleaned);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -230,7 +271,8 @@ export async function saveStudioConfigToCloud(config: StudioConfig): Promise<voi
 export async function saveBookingToCloud(booking: Booking): Promise<void> {
   const path = `bookings/${booking.id}`;
   try {
-    await setDoc(doc(db, 'bookings', booking.id), booking);
+    const cleaned = cleanForFirestore(booking);
+    await setDoc(doc(db, 'bookings', booking.id), cleaned);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

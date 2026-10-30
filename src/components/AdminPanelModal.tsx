@@ -66,6 +66,7 @@ import {
   deleteBookingFromCloud,
   subscribeToBookings,
   subscribeToServices,
+  cleanForFirestore,
 } from '../utils/firestoreService';
 import { compressServiceImage } from '../utils/imageCompressor';
 
@@ -176,7 +177,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       name: newBgName.trim(),
       colorHex: newBgColor,
       borderHex: '#cbd5e1',
-      desc: newBgDesc.trim() || undefined,
+      ...(newBgDesc.trim() ? { desc: newBgDesc.trim() } : {}),
     };
 
     setEditingService({
@@ -443,11 +444,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
     setIsSavingService(true);
     try {
-      const updatedList = updateService(editingService);
+      const sanitized = cleanForFirestore(editingService);
+      const updatedList = updateService(sanitized);
       setServices(updatedList);
-      await saveServiceToCloud(editingService);
+      setEditingService(sanitized);
+      await saveServiceToCloud(sanitized);
       onDataChanged();
-      setSuccessNotif(`Layanan "${editingService.name}" berhasil disimpan ke Cloud Database!`);
+      setSuccessNotif(`Layanan "${sanitized.name}" berhasil disimpan ke Cloud Database!`);
       setTimeout(() => setSuccessNotif(''), 3000);
     } catch (err: any) {
       console.error('Save service error:', err);
@@ -464,7 +467,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       setIsProcessingImage(true);
       try {
         const compressedBase64 = await compressServiceImage(file);
-        const updated = { ...editingService, image: compressedBase64 };
+        const updated = cleanForFirestore({ ...editingService, image: compressedBase64 });
         setEditingService(updated);
 
         // Instantly save to storage and cloud
@@ -493,7 +496,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     if (window.confirm(`Kembalikan foto "${editingService.name}" ke foto ilustrasi bawaan studio?`)) {
       setIsProcessingImage(true);
       try {
-        const updated = { ...editingService, image: defaultSvc.image };
+        const updated = cleanForFirestore({ ...editingService, image: defaultSvc.image });
         setEditingService(updated);
         const updatedList = updateService(updated);
         setServices(updatedList);
