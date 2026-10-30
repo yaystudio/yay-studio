@@ -1,5 +1,5 @@
 import { Booking, BlockedSlot, BookingStatus, Service, StudioConfig } from '../types';
-import { INITIAL_BOOKINGS, SERVICES, STUDIO_CONFIG } from '../data/studioData';
+import { INITIAL_BOOKINGS, SERVICES, STUDIO_CONFIG, BACKDROP_OPTIONS } from '../data/studioData';
 
 const BOOKINGS_KEY = 'yay_studio_bookings_v3';
 const BLOCKED_SLOTS_KEY = 'yay_studio_blocked_slots_v3';
@@ -14,13 +14,17 @@ export function getStoredServices(): Service[] {
       return SERVICES;
     }
     const parsed: Service[] = JSON.parse(raw);
-    // Ensure all services have personPricing merged if missing from older storage versions
+    // Ensure all services have personPricing and backdrops merged if missing from older storage versions
     const merged = parsed.map((svc) => {
       const defaultSvc = SERVICES.find((s) => s.id === svc.id);
-      if (!svc.personPricing && defaultSvc?.personPricing) {
-        return { ...svc, personPricing: { ...defaultSvc.personPricing } };
+      const updatedSvc = { ...svc };
+      if (!updatedSvc.personPricing && defaultSvc?.personPricing) {
+        updatedSvc.personPricing = { ...defaultSvc.personPricing };
       }
-      return svc;
+      if (!updatedSvc.backdrops || updatedSvc.backdrops.length === 0) {
+        updatedSvc.backdrops = defaultSvc?.backdrops ? [...defaultSvc.backdrops] : [...BACKDROP_OPTIONS];
+      }
+      return updatedSvc;
     });
     return merged;
   } catch (e) {

@@ -1,3 +1,11 @@
+export interface BackdropOption {
+  id: string;
+  name: string;
+  colorHex: string;
+  borderHex?: string;
+  desc?: string;
+}
+
 export interface Service {
   id: string;
   name: string;
@@ -20,6 +28,7 @@ export interface Service {
   badge?: string;
   image: string; // URL or Data URL
   personPricing?: Record<number, number>; // maps count of people to price, e.g. { 1: 100000, 2: 120000, 3: 150000 }
+  backdrops?: BackdropOption[]; // list of customizable backdrops for this specific service
 }
 
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';

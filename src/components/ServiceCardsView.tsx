@@ -1,7 +1,7 @@
 import React from 'react';
 import { Service, StudioConfig } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
-import { Clock, Users, ArrowRight, CheckCircle2, MessageCircle } from 'lucide-react';
+import { ArrowRight, MessageCircle } from 'lucide-react';
 import { formatIDR } from '../utils/storage';
 
 interface ServiceCardsViewProps {
@@ -31,16 +31,11 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
     <div className="max-w-4xl mx-auto px-3 sm:px-6 pt-4 pb-16">
       {/* Studio Header */}
       <div className="text-center py-4 sm:py-6 space-y-1.5 sm:space-y-2">
-        <div className="inline-flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono tracking-wider uppercase text-neutral-500 bg-neutral-100 px-3 py-1 rounded-full">
-          <span>Korean Minimalist Photo Studio</span>
-          <span>·</span>
-          <span className="text-neutral-900 font-bold">Makassar (WITA)</span>
-        </div>
         <h1 className="text-xl sm:text-3xl font-display font-extrabold text-neutral-950 tracking-tight">
           Pilih Layanan Sesi Foto
         </h1>
         <p className="text-xs sm:text-sm text-neutral-600 max-w-md mx-auto px-2">
-          Pilih layanan self photo untuk booking online langsung, atau hubungi via WhatsApp untuk sesi bersama fotografer profesional.
+          Pilih layanan sesi foto sesuai kebutuhan kamu
         </p>
       </div>
 
@@ -89,22 +84,6 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
                   <p className="text-[11px] sm:text-xs text-neutral-600 mt-0.5 sm:mt-1 line-clamp-2 leading-relaxed">
                     {selfReguler.subtitle}
                   </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-neutral-600 font-medium pt-1">
-                  <div className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-100">
-                    <Clock className="w-3 h-3 text-neutral-700 shrink-0" />
-                    <span>{selfReguler.durationMinutes}m</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-100">
-                    <Users className="w-3 h-3 text-neutral-700 shrink-0" />
-                    <span>{selfReguler.maxPeople} Orang</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] sm:text-xs text-neutral-500 pt-1.5 border-t border-neutral-100 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span className="truncate">{selfReguler.includedPrints}</span>
                 </div>
               </div>
             </div>
@@ -162,22 +141,6 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
                   <p className="text-[11px] sm:text-xs text-neutral-600 mt-0.5 sm:mt-1 line-clamp-2 leading-relaxed">
                     {profileSelf.subtitle}
                   </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-neutral-600 font-medium pt-1">
-                  <div className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-100">
-                    <Clock className="w-3 h-3 text-neutral-700 shrink-0" />
-                    <span>{profileSelf.durationMinutes}m</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-100">
-                    <Users className="w-3 h-3 text-neutral-700 shrink-0" />
-                    <span>Solo ({profileSelf.maxPeople} Org)</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] sm:text-xs text-neutral-500 pt-1.5 border-t border-neutral-100 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span className="truncate">{profileSelf.includedPrints}</span>
                 </div>
               </div>
             </div>
@@ -237,22 +200,6 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
                         {photographer.subtitle}
                       </p>
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600 font-medium pt-1">
-                    <div className="flex items-center gap-1 bg-neutral-50 px-2.5 py-1 rounded-lg border border-neutral-100">
-                      <Clock className="w-3.5 h-3.5 text-neutral-700 shrink-0" />
-                      <span>{photographer.durationMinutes} Menit</span>
-                    </div>
-                    <div className="flex items-center gap-1 bg-neutral-50 px-2.5 py-1 rounded-lg border border-neutral-100">
-                      <Users className="w-3.5 h-3.5 text-neutral-700 shrink-0" />
-                      <span>Kapasitas s/d {photographer.maxPeople} Orang</span>
-                    </div>
-                  </div>
-
-                  <div className="text-xs text-neutral-500 pt-2 border-t border-neutral-100 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Diarahkan Fotografer Studio Langsung + Cetak 4R</span>
                   </div>
 
                   {/* Notice: No Booking Form, Direct WA */}

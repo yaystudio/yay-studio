@@ -30,12 +30,20 @@ export const EnterDetailsForm: React.FC<EnterDetailsFormProps> = ({
   onBack,
   onConfirmBooking,
 }) => {
+  // Available backdrops for this specific service
+  const availableBackdrops =
+    service.backdrops && service.backdrops.length > 0
+      ? service.backdrops
+      : BACKDROP_OPTIONS;
+
   // Form fields matching user reference image
   const [customerName, setCustomerName] = useState<string>('');
   const [customerEmail, setCustomerEmail] = useState<string>('');
   const [customerWhatsapp, setCustomerWhatsapp] = useState<string>('');
   const [peopleCount, setPeopleCount] = useState<number>(service.maxPeople || 2);
-  const [selectedBackdrop, setSelectedBackdrop] = useState<string>(BACKDROP_OPTIONS[0].name);
+  const [selectedBackdrop, setSelectedBackdrop] = useState<string>(
+    availableBackdrops[0]?.name || ''
+  );
 
   // Errors
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -197,9 +205,25 @@ export const EnterDetailsForm: React.FC<EnterDetailsFormProps> = ({
 
         {/* 5. Warna Bakground * (Dropdown with Select... placeholder) */}
         <div>
-          <label className="block text-sm font-semibold text-neutral-800 mb-1.5">
-            Warna Bakground *
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-sm font-semibold text-neutral-800">
+              Warna Bakground *
+            </label>
+            {availableBackdrops.find((b) => b.name === selectedBackdrop) && (
+              <div className="flex items-center gap-1.5 text-xs text-neutral-600">
+                <span
+                  className="w-3.5 h-3.5 rounded-full border shadow-inner inline-block"
+                  style={{
+                    backgroundColor: availableBackdrops.find((b) => b.name === selectedBackdrop)?.colorHex,
+                    borderColor: availableBackdrops.find((b) => b.name === selectedBackdrop)?.borderHex || '#cbd5e1',
+                  }}
+                />
+                <span className="font-medium text-neutral-900">
+                  {availableBackdrops.find((b) => b.name === selectedBackdrop)?.name}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="relative">
             <select
               value={selectedBackdrop}
@@ -207,9 +231,9 @@ export const EnterDetailsForm: React.FC<EnterDetailsFormProps> = ({
               className="w-full px-4 py-3 text-sm rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white appearance-none cursor-pointer min-h-[48px]"
             >
               <option value="" disabled>Select...</option>
-              {BACKDROP_OPTIONS.map((bg) => (
+              {availableBackdrops.map((bg) => (
                 <option key={bg.id} value={bg.name}>
-                  {bg.name} - {bg.desc}
+                  {bg.name} {bg.desc ? `- ${bg.desc}` : ''}
                 </option>
               ))}
             </select>

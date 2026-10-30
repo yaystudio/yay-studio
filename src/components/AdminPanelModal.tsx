@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Booking, BookingStatus, BlockedSlot, Service, StudioConfig } from '../types';
-import { TIME_SLOTS_MASTER } from '../data/studioData';
+import { Booking, BookingStatus, BlockedSlot, Service, StudioConfig, BackdropOption } from '../types';
+import { TIME_SLOTS_MASTER, BACKDROP_OPTIONS } from '../data/studioData';
 import {
   getStoredBookings,
   updateBookingStatus,
@@ -44,6 +44,7 @@ import {
   Loader2,
   CalendarCheck,
   Plus,
+  Palette,
 } from 'lucide-react';
 import { initAuth, googleSignIn, logout, getAccessToken } from '../utils/googleAuth';
 import {
@@ -135,6 +136,60 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setEditingService({
       ...editingService,
       personPricing: currentPricing,
+    });
+  };
+
+  // State for adding new custom backdrop for this specific service
+  const [newBgName, setNewBgName] = useState<string>('');
+  const [newBgColor, setNewBgColor] = useState<string>('#E2E8F0');
+  const [newBgDesc, setNewBgDesc] = useState<string>('');
+
+  // Handle adding a new backdrop to editingService
+  const handleAddBackdrop = () => {
+    if (!editingService || !newBgName.trim()) {
+      alert('Silakan isi nama background terlebih dahulu.');
+      return;
+    }
+    const currentBackdrops =
+      editingService.backdrops && editingService.backdrops.length > 0
+        ? [...editingService.backdrops]
+        : [...BACKDROP_OPTIONS];
+
+    const newId = `bg-${Date.now()}`;
+    const newBackdrop: BackdropOption = {
+      id: newId,
+      name: newBgName.trim(),
+      colorHex: newBgColor,
+      borderHex: '#cbd5e1',
+      desc: newBgDesc.trim() || undefined,
+    };
+
+    setEditingService({
+      ...editingService,
+      backdrops: [...currentBackdrops, newBackdrop],
+    });
+    setNewBgName('');
+    setNewBgDesc('');
+    setNewBgColor('#E2E8F0');
+  };
+
+  // Handle deleting a backdrop from editingService
+  const handleDeleteBackdrop = (bgId: string) => {
+    if (!editingService) return;
+    const currentBackdrops =
+      editingService.backdrops && editingService.backdrops.length > 0
+        ? [...editingService.backdrops]
+        : [...BACKDROP_OPTIONS];
+
+    if (currentBackdrops.length <= 1) {
+      alert('Layanan harus memiliki minimal 1 pilihan background.');
+      return;
+    }
+
+    const updated = currentBackdrops.filter((b) => b.id !== bgId);
+    setEditingService({
+      ...editingService,
+      backdrops: updated,
     });
   };
 
@@ -835,6 +890,125 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           <Plus className="w-3.5 h-3.5" />
                           <span>Tambah Tier</span>
                         </button>
+                      </div>
+                    </div>
+
+                    {/* PENGATURAN PILIHAN BACKGROUND / BACKDROP (USER REQUESTED) */}
+                    <div className="p-4 bg-white rounded-2xl border border-neutral-200 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2.5 border-b border-neutral-100">
+                        <div>
+                          <h5 className="text-xs font-bold text-neutral-950 flex items-center gap-1.5">
+                            <Palette className="w-4 h-4 text-neutral-900" />
+                            <span>Pilihan Warna Background Layanan</span>
+                          </h5>
+                          <p className="text-[11px] text-neutral-500 mt-0.5">
+                            Kelola pilihan warna backdrop studio khusus untuk layanan ini.
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-mono bg-neutral-100 text-neutral-800 px-2.5 py-0.5 rounded-full font-semibold border border-neutral-200 self-start sm:self-auto">
+                          {(editingService.backdrops && editingService.backdrops.length > 0
+                            ? editingService.backdrops
+                            : BACKDROP_OPTIONS
+                          ).length} Warna Aktif
+                        </span>
+                      </div>
+
+                      {/* Backdrops List */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                        {(editingService.backdrops && editingService.backdrops.length > 0
+                          ? editingService.backdrops
+                          : BACKDROP_OPTIONS
+                        ).map((bg) => (
+                          <div
+                            key={bg.id}
+                            className="flex items-center justify-between gap-2.5 p-2.5 bg-neutral-50 rounded-xl border border-neutral-200/80 text-xs hover:border-neutral-300 transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-7 h-7 rounded-full border shadow-inner shrink-0"
+                                style={{
+                                  backgroundColor: bg.colorHex,
+                                  borderColor: bg.borderHex || '#cbd5e1',
+                                }}
+                              />
+                              <div className="min-w-0">
+                                <div className="font-bold text-neutral-900 truncate">{bg.name}</div>
+                                <div className="text-[10px] text-neutral-500 font-mono truncate">
+                                  {bg.colorHex} {bg.desc ? `· ${bg.desc}` : ''}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBackdrop(bg.id)}
+                              title={`Hapus background ${bg.name}`}
+                              className="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add New Backdrop Inline Form */}
+                      <div className="pt-2.5 border-t border-neutral-100 space-y-2">
+                        <div className="text-[11px] font-semibold text-neutral-700">
+                          Tambah Background Baru untuk Layanan Ini:
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                          {/* Color Picker + Hex */}
+                          <div className="sm:col-span-3 flex items-center gap-2 bg-neutral-50 p-1.5 rounded-xl border border-neutral-200">
+                            <input
+                              type="color"
+                              value={newBgColor}
+                              onChange={(e) => setNewBgColor(e.target.value)}
+                              className="w-7 h-7 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0"
+                              title="Pilih warna"
+                            />
+                            <input
+                              type="text"
+                              value={newBgColor}
+                              onChange={(e) => setNewBgColor(e.target.value)}
+                              placeholder="#E2E8F0"
+                              className="w-full text-xs font-mono font-medium bg-transparent focus:outline-none uppercase"
+                            />
+                          </div>
+
+                          {/* Name Input */}
+                          <div className="sm:col-span-4">
+                            <input
+                              type="text"
+                              value={newBgName}
+                              onChange={(e) => setNewBgName(e.target.value)}
+                              placeholder="Nama (misal: Sage Green)"
+                              className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white focus:outline-none focus:ring-1 focus:ring-neutral-950 font-medium"
+                            />
+                          </div>
+
+                          {/* Description Input */}
+                          <div className="sm:col-span-3">
+                            <input
+                              type="text"
+                              value={newBgDesc}
+                              onChange={(e) => setNewBgDesc(e.target.value)}
+                              placeholder="Deskripsi singkat"
+                              className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white focus:outline-none focus:ring-1 focus:ring-neutral-950"
+                            />
+                          </div>
+
+                          {/* Add Button */}
+                          <div className="sm:col-span-2">
+                            <button
+                              type="button"
+                              onClick={handleAddBackdrop}
+                              className="w-full py-2 px-3 bg-neutral-950 hover:bg-neutral-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-all"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Tambah</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
