@@ -178,6 +178,151 @@ export function isSlotAvailable(date: string, timeSlot: string): { available: bo
   return { available: true };
 }
 
+export function getMakassarDateTime(): {
+  todayDate: string;
+  currentTimeStr: string;
+  currentHour: number;
+  currentMinute: number;
+  currentMinutesTotal: number;
+} {
+  const now = new Date();
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Makassar',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = dtf.formatToParts(now);
+  const getVal = (type: string) => parts.find((p) => p.type === type)?.value || '00';
+  const yyyy = getVal('year');
+  const mm = getVal('month');
+  const dd = getVal('day');
+  let hh = parseInt(getVal('hour'), 10);
+  if (hh === 24) hh = 0;
+  const min = parseInt(getVal('minute'), 10);
+  return {
+    todayDate: `${yyyy}-${mm}-${dd}`,
+    currentTimeStr: `${String(hh).padStart(2, '0')}:${String(min).padStart(2, '0')}`,
+    currentHour: hh,
+    currentMinute: min,
+    currentMinutesTotal: hh * 60 + min,
+  };
+}
+
+export interface ServiceTimeSlot {
+  time: string;
+  period: string;
+}
+
+/**
+ * Menghasilkan daftar slot jam sesi secara dinamis mengikuti durasi layanan (durationMinutes)
+ * serta rentang jam buka & tutup studio.
+ */
+export function generateServiceTimeSlots(
+  openTimeStr: string = '10:00',
+  closeTimeStr: string = '21:30',
+  durationMinutes: number = 30
+): ServiceTimeSlot[] {
+  const duration = Math.max(10, Number(durationMinutes) || 30);
+
+  const [openH, openM] = (openTimeStr || '10:00').split(':').map(Number);
+  const [closeH, closeM] = (closeTimeStr || '21:30').split(':').map(Number);
+
+  const startTotalMinutes = (isNaN(openH) ? 10 : openH) * 60 + (isNaN(openM) ? 0 : openM);
+  const endTotalMinutes = (isNaN(closeH) ? 21 : closeH) * 60 + (isNaN(closeM) ? 30 : closeM);
+
+  const slots: ServiceTimeSlot[] = [];
+
+  let current = startTotalMinutes;
+  // Sesi harus selesai sebelum atau tepat pada jam tutup studio
+  while (current + duration <= endTotalMinutes) {
+    const h = Math.floor(current / 60);
+    const m = current % 60;
+    const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+    let period = 'Pagi';
+    if (h >= 12 && h < 15) period = 'Siang';
+    else if (h >= 15 && h < 18) period = 'Sore';
+    else if (h >= 18) period = 'Malam';
+
+    slots.push({ time: timeStr, period });
+    current += duration;
+  }
+
+  // Fallback bila rentang waktu tidak mencukupi satu kelipatan
+  if (slots.length === 0 && startTotalMinutes < endTotalMinutes) {
+    const h = Math.floor(startTotalMinutes / 60);
+    const m = startTotalMinutes % 60;
+    slots.push({
+      time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+      period: h >= 18 ? 'Malam' : h >= 15 ? 'Sore' : h >= 12 ? 'Siang' : 'Pagi',
+    });
+  }
+
+  return slots;
+}
+
+/**
+ * Mengambil slot yang tersedia untuk booking:
+ * - Menghitung slot sesuai durasi layanan
+ * - Menghilangkan jam yang sudah lewat pada hari ini (Waktu Makassar GMT+8)
+ * - Menghilangkan jam yang sudah terisi/dipesan oleh pelanggan lain
+ */
+export function getAvailableSlotsForDate(
+  service: Service | null | undefined,
+  selectedDate: string
+): ServiceTimeSlot[] {
+  if (!service || !selectedDate) return [];
+
+  const rawSlots = generateServiceTimeSlots(
+    service.openTime || '10:00',
+    service.closeTime || '21:30',
+    service.durationMinutes || 30
+  );
+
+  const makassarNow = getMakassarDateTime();
+  const bookings = getStoredBookings();
+  const blockedSlots = getStoredBlockedSlots();
+
+  return rawSlots.filter((slot) => {
+    // 1. Jika tanggal sudah lewat kemarin, tidak ada slot
+    if (selectedDate < makassarNow.todayDate) {
+      return false;
+    }
+
+    // 2. Jika tanggal adalah HARI INI: jam yang kosong dan sudah lewat dihilangkan
+    if (selectedDate === makassarNow.todayDate) {
+      const [sH, sM] = slot.time.split(':').map(Number);
+      const slotMinutes = (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM);
+      // Jika jam sesi sudah lewat dari waktu sekarang di Makassar, hilangkan dari pilihan
+      if (slotMinutes <= makassarNow.currentMinutesTotal) {
+        return false;
+      }
+    }
+
+    // 3. Hilangkan slot yang sudah terisi (booked)
+    const isBooked = bookings.some(
+      (b) => b.date === selectedDate && b.timeSlot === slot.time && b.status !== 'cancelled'
+    );
+    if (isBooked) {
+      return false;
+    }
+
+    // 4. Hilangkan slot yang diblokir (jika ada)
+    const isBlocked = blockedSlots.some(
+      (s) => s.date === selectedDate && s.timeSlot === slot.time
+    );
+    if (isBlocked) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 export function resetDemoData(): void {
   localStorage.setItem(BOOKINGS_KEY, JSON.stringify(INITIAL_BOOKINGS));
   localStorage.setItem(BLOCKED_SLOTS_KEY, JSON.stringify([]));
@@ -225,3 +370,4 @@ export function generateBookingId(): string {
   const randomChars = Math.random().toString(36).substring(2, 5).toUpperCase();
   return `YAY-${day}${month}-${randomChars}`;
 }
+

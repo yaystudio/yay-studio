@@ -1,7 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { TIME_SLOTS_MASTER } from '../data/studioData';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Service } from '../types';
-import { isSlotAvailable, formatDateIndo } from '../utils/storage';
+import { getAvailableSlotsForDate, getMakassarDateTime } from '../utils/storage';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 
 interface CalendlyDateTimeSelectorProps {
@@ -21,6 +20,9 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
   onSelectTimeSlot,
   onProceed,
 }) => {
+  // Current time in Makassar (WITA, GMT+8)
+  const makassarNow = useMemo(() => getMakassarDateTime(), [selectedDate]);
+
   // Parse current selected or initial date
   const initialDate = useMemo(() => {
     if (selectedDate) {
@@ -72,18 +74,14 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
       days.push(null);
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     // Days in current month
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(currentYear, currentMonth, d);
-      dateObj.setHours(0, 0, 0, 0);
-      const isPast = dateObj < today;
-
       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(
         d
       ).padStart(2, '0')}`;
+
+      // Date is past if before today in Makassar (WITA)
+      const isPast = dateStr < makassarNow.todayDate;
 
       days.push({
         dayNumber: d,
@@ -93,23 +91,19 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
     }
 
     return days;
-  }, [currentYear, currentMonth]);
+  }, [currentYear, currentMonth, makassarNow.todayDate]);
 
-  // Filter ONLY ready slots within service open and close time
+  // Dynamic slots: generated based on service duration, with past Makassar time and booked slots excluded
   const readySlots = useMemo(() => {
-    const open = service?.openTime || '09:00';
-    const close = service?.closeTime || '22:00';
+    return getAvailableSlotsForDate(service, selectedDate);
+  }, [service, selectedDate]);
 
-    return TIME_SLOTS_MASTER.filter((slot) => {
-      // Check service operating hours
-      if (slot.time < open || slot.time > close) {
-        return false;
-      }
-      // Check availability (not booked or blocked)
-      const status = isSlotAvailable(selectedDate, slot.time);
-      return status.available;
-    });
-  }, [selectedDate, service?.openTime, service?.closeTime]);
+  // Reset selectedTimeSlot if it no longer exists in readySlots
+  useEffect(() => {
+    if (selectedTimeSlot && !readySlots.some((s) => s.time === selectedTimeSlot)) {
+      onSelectTimeSlot('');
+    }
+  }, [readySlots, selectedTimeSlot, onSelectTimeSlot]);
 
   // Formatted date title for right column
   const formattedSelectedDateHeader = useMemo(() => {
@@ -239,8 +233,13 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
                 <span className="font-display font-bold text-base sm:text-lg text-neutral-900 capitalize">
                   {formattedSelectedDateHeader}
                 </span>
+                {service?.durationMinutes && (
+                  <span className="text-[11px] text-neutral-500 font-mono block">
+                    Durasi: {service.durationMinutes} menit / sesi
+                  </span>
+                )}
               </div>
-              <span className="text-[11px] text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="text-[11px] text-emerald-600 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                 {readySlots.length} Jam Ready
               </span>
             </div>
@@ -248,7 +247,9 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
             {/* DUA SISI (2 COLUMNS) OF SINGLE TIME OUTLINE BUTTONS */}
             {readySlots.length === 0 ? (
               <div className="p-8 text-center text-xs text-neutral-500 bg-neutral-50 rounded-xl border border-neutral-200">
-                Tidak ada slot jam ready pada tanggal ini. Silakan pilih tanggal lain.
+                {selectedDate === makassarNow.todayDate
+                  ? 'Semua jam sesi untuk hari ini sudah terlewat atau terisi penuh. Silakan pilih tanggal berikutnya.'
+                  : 'Tidak ada slot jam ready pada tanggal ini. Silakan pilih tanggal lain.'}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2.5 max-h-[320px] overflow-y-auto pr-1">

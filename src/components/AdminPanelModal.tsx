@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { Booking, BookingStatus, BlockedSlot, Service, StudioConfig, BackdropOption } from '../types';
-import { TIME_SLOTS_MASTER, BACKDROP_OPTIONS } from '../data/studioData';
+import { BACKDROP_OPTIONS } from '../data/studioData';
 import {
   getStoredBookings,
   updateBookingStatus,
   deleteBooking,
   getStoredBlockedSlots,
-  toggleBlockSlot,
   getStoredServices,
   updateService,
   getStoredStudioConfig,
@@ -72,8 +71,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [pinInput, setPinInput] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
 
-  // Active Tab: 'services' | 'bookings' | 'calendar' | 'slots' | 'studio'
-  const [activeTab, setActiveTab] = useState<'services' | 'bookings' | 'calendar' | 'slots' | 'studio'>('services');
+  // Active Tab: 'services' | 'bookings' | 'calendar' | 'studio'
+  const [activeTab, setActiveTab] = useState<'services' | 'bookings' | 'calendar' | 'studio'>('services');
 
   // Google Calendar Integration State
   const [googleUser, setGoogleUser] = useState<any>(null);
@@ -87,11 +86,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // Booking list filters & search
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  // Slot Management State
-  const [slotDate, setSlotDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
-  );
 
   // Local sync states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -352,12 +346,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   };
 
-  // Toggle Block Slot
-  const handleToggleSlot = (timeSlot: string) => {
-    const updated = toggleBlockSlot(slotDate, timeSlot);
-    setBlockedSlots(updated);
-    onDataChanged();
-  };
 
   // Save Service Changes (Full Control over Description, Duration, Open/Close Time, Price)
   const handleSaveService = (e: React.FormEvent) => {
@@ -545,17 +533,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   ) : null}
                 </button>
 
-                <button
-                  onClick={() => setActiveTab('slots')}
-                  className={`py-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                    activeTab === 'slots'
-                      ? 'border-neutral-950 text-neutral-950'
-                      : 'border-transparent text-neutral-500 hover:text-neutral-900'
-                  }`}
-                >
-                  <Clock className="w-4 h-4" />
-                  <span>Slot & Jadwal (WITA)</span>
-                </button>
 
                 <button
                   onClick={() => setActiveTab('studio')}
@@ -1560,94 +1537,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </div>
             )}
 
-            {/* TAB 3: KELOLA SLOT & JADWAL */}
-            {activeTab === 'slots' && (
-              <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-                  <div>
-                    <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1">
-                      Pilih Tanggal Kalender (WITA · GMT+8 Makassar)
-                    </label>
-                    <input
-                      type="date"
-                      value={slotDate}
-                      onChange={(e) => setSlotDate(e.target.value)}
-                      className="px-3 py-2 text-xs rounded-lg border border-neutral-300 font-mono focus:outline-none focus:ring-1 focus:ring-neutral-950"
-                    />
-                  </div>
-                  <div className="text-xs text-neutral-600">
-                    <span className="font-semibold text-neutral-900 block">
-                      {formatDateIndo(slotDate)}
-                    </span>
-                    <span className="text-[11px] text-neutral-500">
-                      Klik pada slot waktu di bawah untuk memblokir atau membukanya.
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {TIME_SLOTS_MASTER.map((slot) => {
-                    const isBlocked = blockedSlots.some(
-                      (s) => s.date === slotDate && s.timeSlot === slot.time
-                    );
-                    const isBooked = bookings.some(
-                      (b) =>
-                        b.date === slotDate &&
-                        b.timeSlot === slot.time &&
-                        b.status !== 'cancelled'
-                    );
-
-                    return (
-                      <div
-                        key={slot.time}
-                        className={`p-3 rounded-xl border flex flex-col justify-between gap-2 transition-all ${
-                          isBooked
-                            ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-                            : isBlocked
-                            ? 'bg-neutral-100 border-neutral-300 text-neutral-500'
-                            : 'bg-white border-neutral-200 text-neutral-900'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[10px] font-mono">
-                          <span>{slot.period}</span>
-                          {isBooked ? (
-                            <span className="font-semibold text-amber-700">Dipesan</span>
-                          ) : isBlocked ? (
-                            <span className="font-semibold text-neutral-500">Diblokir</span>
-                          ) : (
-                            <span className="font-semibold text-emerald-600">Buka</span>
-                          )}
-                        </div>
-
-                        <div className="text-sm font-bold font-mono">{slot.time}</div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSlot(slot.time)}
-                          className={`w-full py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
-                            isBlocked
-                              ? 'bg-neutral-900 text-white hover:bg-neutral-800'
-                              : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                          }`}
-                        >
-                          {isBlocked ? (
-                            <>
-                              <Unlock className="w-3 h-3" />
-                              <span>Buka Slot</span>
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="w-3 h-3" />
-                              <span>Blokir Slot</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* TAB 4: INFO STUDIO & TEKS WEBSITE */}
             {activeTab === 'studio' && (

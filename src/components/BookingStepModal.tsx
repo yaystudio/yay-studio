@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Service, Booking } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
-import { generateBookingId, saveBooking } from '../utils/storage';
+import { generateBookingId, saveBooking, getMakassarDateTime } from '../utils/storage';
 import { CalendlyDateTimeSelector } from './CalendlyDateTimeSelector';
 import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
@@ -22,9 +22,9 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
   // 2 Steps: 1 = Calendly Date & Time, 2 = Enter Details
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
-  // Date and Time Slot
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  // Date and Time Slot based on Makassar (WITA)
+  const todayMakassar = useMemo(() => getMakassarDateTime().todayDate, []);
+  const [selectedDate, setSelectedDate] = useState<string>(todayMakassar);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
 
   // Reset on open or service change
@@ -32,6 +32,7 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
     if (isOpen && service) {
       setCurrentStep(1);
       setSelectedTimeSlot('');
+      setSelectedDate(getMakassarDateTime().todayDate);
     }
   }, [isOpen, service]);
 
