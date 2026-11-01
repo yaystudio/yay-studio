@@ -60,7 +60,14 @@ import {
   Zap,
   RotateCcw,
 } from 'lucide-react';
-import { initAuth, googleSignIn, logout, getAccessToken } from '../utils/googleAuth';
+import {
+  initAuth,
+  googleSignIn,
+  logout,
+  getAccessToken,
+  isCalendarTokenValid,
+  clearStoredToken,
+} from '../utils/googleAuth';
 import {
   createGoogleCalendarEvent,
   getSyncedCalendarRecords,
@@ -71,6 +78,7 @@ import {
   syncAllPendingBookings,
   isBookingSynced,
 } from '../utils/googleCalendar';
+import { downloadAllBookingsICS } from '../utils/calendarFeed';
 import {
   saveServiceToCloud,
   saveStudioConfigToCloud,
@@ -115,6 +123,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [syncedRecords, setSyncedRecords] = useState<Record<string, SyncedCalendarRecord>>(getSyncedCalendarRecords());
   const [autoSyncEnabled, setAutoSyncEnabledState] = useState<boolean>(getAutoSyncEnabled());
   const [isAutoSyncing, setIsAutoSyncing] = useState<boolean>(false);
+  const [hasCalendarToken, setHasCalendarToken] = useState<boolean>(isCalendarTokenValid());
+  const [copiedFeedUrl, setCopiedFeedUrl] = useState<boolean>(false);
 
   // Booking list filters & search
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -229,8 +239,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const triggerAutoSync = async (passedToken?: string, targetBookings?: Booking[]) => {
     try {
       if (!autoSyncEnabled) return;
-      const token = passedToken || (await getAccessToken());
-      if (!token) return;
+      let token = passedToken;
+      if (!token && isCalendarTokenValid()) {
+        token = (await getAccessToken(true)) || undefined;
+      }
+      if (!token) {
+        setHasCalendarToken(false);
+        return;
+      }
+      setHasCalendarToken(true);
 
       const activeBookings =
         targetBookings && targetBookings.length > 0
@@ -250,7 +267,22 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
       setIsAutoSyncing(true);
       const res = await syncAllPendingBookings(pending, token);
-      setSyncedRecords(getSyncedCalendarRecords());
+      const updatedSynced = getSyncedCalendarRecords();
+      setSyncedRecords(updatedSynced);
+
+      // Immediately update local bookings state so counters update
+      setBookings((prev) =>
+        prev.map((b) => {
+          if (updatedSynced[b.id]) {
+            return {
+              ...b,
+              syncedToCalendar: true,
+              calendarEventId: updatedSynced[b.id].calendarEventId,
+            };
+          }
+          return b;
+        })
+      );
 
       if (res.successCount > 0) {
         setSuccessNotif(
@@ -266,6 +298,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           errText.toLowerCase().includes('berakhir') ||
           errText.toLowerCase().includes('unauthorized')
         ) {
+          setHasCalendarToken(false);
           setGoogleError(
             'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" untuk menghubungkan ulang.'
           );
@@ -278,12 +311,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   };
 
-  const handleToggleAutoSync = () => {
+  const handleToggleAutoSync = async () => {
     const nextVal = !autoSyncEnabled;
     setAutoSyncEnabledState(nextVal);
     setAutoSyncEnabled(nextVal);
     if (nextVal) {
-      triggerAutoSync();
+      if (!isCalendarTokenValid()) {
+        await handleSyncAllBookings();
+      } else {
+        triggerAutoSync();
+      }
     }
   };
 
@@ -292,11 +329,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     const unsubscribe = initAuth(
       (user, token) => {
         setGoogleUser(user);
+        const valid = isCalendarTokenValid();
+        setHasCalendarToken(valid);
         if (token && autoSyncEnabled) {
           triggerAutoSync(token);
         }
       },
-      () => setGoogleUser(null)
+      () => {
+        setGoogleUser(null);
+        setHasCalendarToken(false);
+      }
     );
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
@@ -305,10 +347,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Auto-sync whenever user opens Calendar tab or when auto-sync is active
   React.useEffect(() => {
-    if (isOpen && activeTab === 'calendar' && autoSyncEnabled && googleUser) {
-      triggerAutoSync();
+    if (isOpen) {
+      const valid = isCalendarTokenValid();
+      setHasCalendarToken(valid);
+      if (autoSyncEnabled && valid) {
+        triggerAutoSync();
+      }
     }
-  }, [activeTab, isOpen, autoSyncEnabled, !!googleUser, bookings.length]);
+  }, [activeTab, isOpen, autoSyncEnabled, bookings.length]);
 
   // Load data on open
   React.useEffect(() => {
@@ -374,6 +420,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       const res = await googleSignIn();
       if (res?.user) {
         setGoogleUser(res.user);
+        setHasCalendarToken(true);
         setSuccessNotif(`Google Calendar terhubung (${res.user.email})`);
         setTimeout(() => setSuccessNotif(''), 3000);
         if (autoSyncEnabled && res.accessToken) {
@@ -392,6 +439,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const handleGoogleLogout = async () => {
     await logout();
     setGoogleUser(null);
+    setHasCalendarToken(false);
     setSuccessNotif('Berhasil keluar dari akun Google.');
     setTimeout(() => setSuccessNotif(''), 3000);
   };
@@ -401,20 +449,33 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setSyncingBookingId(booking.id);
     setGoogleError('');
     try {
-      let token = await getAccessToken();
+      let token = await getAccessToken(true);
       if (!token) {
         const signinResult = await googleSignIn();
         token = signinResult?.accessToken || null;
+        if (signinResult?.user) {
+          setGoogleUser(signinResult.user);
+        }
       }
       if (!token) {
         throw new Error('Izin Google Calendar diperlukan untuk sinkronisasi.');
       }
+      setHasCalendarToken(true);
 
       const res = await createGoogleCalendarEvent(booking, token, 30);
       if (res.success) {
-        setSyncedRecords(getSyncedCalendarRecords());
+        const updatedRecords = getSyncedCalendarRecords();
+        setSyncedRecords(updatedRecords);
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === booking.id
+              ? { ...b, syncedToCalendar: true, calendarEventId: res.eventId }
+              : b
+          )
+        );
         setSuccessNotif(`Booking #${booking.id} berhasil disinkronkan ke Google Calendar!`);
         setTimeout(() => setSuccessNotif(''), 3000);
+        onDataChanged();
       } else {
         setGoogleError(res.error || 'Gagal sinkronisasi ke Google Calendar.');
       }
@@ -440,17 +501,36 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setSyncAllLoading(true);
     setGoogleError('');
     try {
-      let token = await getAccessToken();
+      let token = await getAccessToken(true);
       if (!token) {
         const signinResult = await googleSignIn();
         token = signinResult?.accessToken || null;
+        if (signinResult?.user) {
+          setGoogleUser(signinResult.user);
+        }
       }
       if (!token) {
         throw new Error('Izin Google Calendar diperlukan untuk sinkronisasi.');
       }
+      setHasCalendarToken(true);
 
       const res = await syncAllPendingBookings(unsynced, token);
-      setSyncedRecords(getSyncedCalendarRecords());
+      const updatedRecords = getSyncedCalendarRecords();
+      setSyncedRecords(updatedRecords);
+
+      setBookings((prev) =>
+        prev.map((b) => {
+          if (updatedRecords[b.id]) {
+            return {
+              ...b,
+              syncedToCalendar: true,
+              calendarEventId: updatedRecords[b.id].calendarEventId,
+            };
+          }
+          return b;
+        })
+      );
+
       if (res.successCount > 0) {
         setSuccessNotif(`⚡ Berhasil! ${res.successCount} reservasi disinkronkan ke Google Calendar!`);
         onDataChanged();
@@ -464,6 +544,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           errText.toLowerCase().includes('berakhir') ||
           errText.toLowerCase().includes('unauthorized')
         ) {
+          setHasCalendarToken(false);
           setGoogleError(
             'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" lagi untuk login ulang akun Google.'
           );
@@ -1498,6 +1579,150 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             {/* TAB: GOOGLE CALENDAR INTEGRATION (WITA - GMT+8 MAKASSAR) */}
             {activeTab === 'calendar' && (
               <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
+                {/* 100% PERMANENT CALENDAR FEED (SELAMANYA AKTIF & GRATIS) */}
+                <div className="bg-gradient-to-br from-emerald-950/90 to-neutral-900 border-2 border-emerald-500/40 rounded-2xl p-5 sm:p-6 text-white space-y-4 shadow-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                        <Calendar className="w-6 h-6 text-emerald-400" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-bold text-base font-display text-white">
+                            Langganan Kalender Otomatis (Selamanya Aktif)
+                          </h4>
+                          <span className="text-[10px] font-mono bg-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/40 font-bold">
+                            100% GRATIS
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-300 mt-1 leading-relaxed">
+                          Hubungkan sekali saja seumur hidup! Semua jadwal booking customer baru akan langsung muncul otomatis di Google Calendar (HP &amp; Laptop) Anda tanpa perlu login ulang atau sinkronkan manual lagi.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* URL Box & Action Buttons */}
+                  <div className="bg-black/50 p-4 rounded-xl border border-emerald-500/30 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-[11px] font-mono text-emerald-300 uppercase tracking-wider font-semibold">
+                        Link Feed Kalender Studio (iCal / ICS):
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        Mendukung Google Calendar, Apple Calendar (iPhone/Mac), &amp; Outlook
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={typeof window !== 'undefined' ? `${window.location.origin}/api/calendar.ics` : '/api/calendar.ics'}
+                        className="flex-1 bg-black/70 border border-neutral-700 text-neutral-200 text-xs font-mono px-3 py-2 rounded-lg truncate select-all focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            const url = `${window.location.origin}/api/calendar.ics`;
+                            navigator.clipboard.writeText(url);
+                            setCopiedFeedUrl(true);
+                            setTimeout(() => setCopiedFeedUrl(false), 2500);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white text-neutral-900 hover:bg-neutral-100 font-bold text-xs rounded-lg transition-colors shrink-0 cursor-pointer shadow-xs"
+                      >
+                        {copiedFeedUrl ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700">Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Salin Link</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Quick 1-Click Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <a
+                        href={
+                          typeof window !== 'undefined'
+                            ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(
+                                `${window.location.origin}/api/calendar.ics`
+                              )}`
+                            : 'https://calendar.google.com'
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-md active:scale-95"
+                      >
+                        <CalendarCheck className="w-4 h-4" />
+                        <span>Buka &amp; Tambahkan ke Google Calendar (1-Klik)</span>
+                        <ExternalLink className="w-3 h-3 opacity-80" />
+                      </a>
+
+                      <a
+                        href={
+                          typeof window !== 'undefined'
+                            ? `${window.location.origin.replace(/^https?:/, 'webcal:')}/api/calendar.ics`
+                            : '#'
+                        }
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold text-xs rounded-lg transition-colors border border-neutral-700"
+                        title="Buka langsung di aplikasi Apple Calendar iPhone atau Mac"
+                      >
+                        <span>Apple Calendar (iPhone/Mac)</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => downloadAllBookingsICS(bookings)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs rounded-lg transition-colors border border-neutral-700 ml-auto"
+                        title="Unduh file backup seluruh jadwal sesi foto dalam format .ics"
+                      >
+                        <Upload className="w-3.5 h-3.5 rotate-180" />
+                        <span>Unduh Backup .ics</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3 Step Guide Tips */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1 text-[11px] text-neutral-300">
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] flex items-center justify-center font-bold">1</span>
+                        Klik Tombol Hijau di Atas
+                      </span>
+                      <p className="text-neutral-400 leading-relaxed">
+                        Klik <strong>"Tambahkan ke Google Calendar (1-Klik)"</strong>. Halaman Google Calendar Anda akan terbuka otomatis.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] flex items-center justify-center font-bold">2</span>
+                        Konfirmasi "Add Calendar"
+                      </span>
+                      <p className="text-neutral-400 leading-relaxed">
+                        Google Calendar akan menampilkan pop-up konfirmasi. Klik tombol <strong>"Add Calendar" / "Tambahkan Kalender"</strong>.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+                      <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span className="w-4 h-4 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] flex items-center justify-center font-bold">3</span>
+                        Tersinkron Selamanya
+                      </span>
+                      <p className="text-neutral-400 leading-relaxed">
+                        Selesai! Jadwal sesi foto studio akan langsung muncul dan tersinkron otomatis 24/7 di HP &amp; laptop Anda tanpa perlu login lagi.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Integration Header Card */}
                 <div className="bg-gradient-to-br from-neutral-900 to-neutral-950 text-white p-5 sm:p-6 rounded-2xl border border-neutral-800 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1537,15 +1762,25 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <div className="pt-3 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     {googleUser ? (
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                        <div
+                          className={`w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-xs shrink-0 ${
+                            hasCalendarToken ? 'bg-emerald-500' : 'bg-amber-500 ring-2 ring-amber-400/50'
+                          }`}
+                        >
                           {googleUser.email?.[0]?.toUpperCase() || 'G'}
                         </div>
                         <div>
                           <div className="text-xs font-bold text-white flex items-center gap-1.5">
                             <span>{googleUser.displayName || 'Akun Google Studio'}</span>
-                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
-                              Terhubung
-                            </span>
+                            {hasCalendarToken ? (
+                              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
+                                Terhubung &amp; Aktif
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40 animate-pulse">
+                                Sesi Perlu Diperbarui
+                              </span>
+                            )}
                           </div>
                           <span className="text-[11px] text-neutral-400 font-mono">
                             {googleUser.email}
@@ -1570,7 +1805,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             disabled={syncAllLoading || isAutoSyncing}
                             className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all shadow active:scale-95 text-white ${
                               bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length > 0
-                                ? 'bg-blue-600 hover:bg-blue-700'
+                                ? hasCalendarToken
+                                  ? 'bg-blue-600 hover:bg-blue-700'
+                                  : 'bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-400/40'
                                 : 'bg-emerald-600 hover:bg-emerald-700'
                             }`}
                           >
@@ -1583,7 +1820,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                               <>
                                 <Zap className="w-3.5 h-3.5 fill-current" />
                                 <span>
-                                  Sinkronkan ({bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length} Belum)
+                                  {hasCalendarToken ? 'Sinkronkan' : 'Perbarui Sesi & Sinkronkan'} (
+                                  {bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length} Belum)
                                 </span>
                               </>
                             ) : (
@@ -1637,6 +1875,29 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Notice if Google User is present but calendar OAuth token is expired / needed */}
+                {googleUser && !hasCalendarToken && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-amber-950 block">Sesi Token Google Calendar Telah Berakhir</span>
+                        <span className="text-amber-800 text-[11px] leading-relaxed">
+                          Sesuai kebijakan keamanan Google OAuth, token sinkronisasi berumur 1 jam. Klik tombol di samping untuk memperbarui sesi akun Google &amp; menyelesaikan sinkronisasi dengan 1 klik.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSyncAllBookings}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-xs"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-current" />
+                      <span>Perbarui &amp; Sinkronkan</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Auto-Sync Setting & Live Metrics Card */}
                 <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
