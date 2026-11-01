@@ -121,12 +121,15 @@ export function getStoredStudioConfig(): StudioConfig {
       localStorage.setItem(STUDIO_CONFIG_KEY, JSON.stringify(STUDIO_CONFIG));
       return STUDIO_CONFIG;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    const merged = { ...STUDIO_CONFIG, ...parsed };
+    return merged;
   } catch (e) {
     console.error('Failed to load studio config', e);
     return STUDIO_CONFIG;
   }
 }
+
 
 export function updateStudioConfig(newConfig: StudioConfig): StudioConfig {
   localStorage.setItem(STUDIO_CONFIG_KEY, JSON.stringify(newConfig));

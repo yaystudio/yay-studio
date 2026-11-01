@@ -15,6 +15,17 @@ import {
   formatDateIndo,
 } from '../utils/storage';
 import {
+  DEFAULT_CUSTOMER_EMAIL_SUBJECT,
+  DEFAULT_CUSTOMER_EMAIL_GREETING,
+  DEFAULT_CUSTOMER_EMAIL_MESSAGE,
+  DEFAULT_CUSTOMER_EMAIL_INSTRUCTIONS,
+  DEFAULT_CUSTOMER_EMAIL_FOOTER,
+  DEFAULT_ADMIN_EMAIL_SUBJECT,
+  formatCustomerEmail,
+  formatAdminEmail,
+} from '../utils/emailService';
+
+import {
   X,
   ShieldCheck,
   Calendar,
@@ -87,8 +98,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [pinInput, setPinInput] = useState<string>('');
   const [pinError, setPinError] = useState<string>('');
 
-  // Active Tab: 'services' | 'bookings' | 'calendar' | 'studio'
-  const [activeTab, setActiveTab] = useState<'services' | 'bookings' | 'calendar' | 'studio'>('services');
+  // Active Tab: 'services' | 'bookings' | 'calendar' | 'email' | 'studio'
+  const [activeTab, setActiveTab] = useState<'services' | 'bookings' | 'calendar' | 'email' | 'studio'>('services');
+  const [emailPreviewTab, setEmailPreviewTab] = useState<'customer' | 'admin'>('customer');
+  const [copiedVariableTag, setCopiedVariableTag] = useState<string>('');
+  const [isSavingEmail, setIsSavingEmail] = useState<boolean>(false);
+
 
   // Google Calendar Integration State
   const [googleUser, setGoogleUser] = useState<any>(null);
@@ -584,6 +599,44 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setTimeout(() => setSuccessNotif(''), 3000);
   };
 
+  // Save Email & Notification Settings
+  const handleSaveEmailConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingEmail(true);
+    try {
+      const sanitized = cleanForFirestore(studioConfig);
+      const updated = updateStudioConfig(sanitized);
+      setStudioConfig(updated);
+      await saveStudioConfigToCloud(sanitized);
+      onDataChanged();
+      setSuccessNotif('Template email & pengaturan notifikasi berhasil disimpan ke Cloud Database!');
+      setTimeout(() => setSuccessNotif(''), 3500);
+    } catch (err: any) {
+      console.error('Save email config error:', err);
+      alert('Gagal menyimpan ke Cloud: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  // Reset Customer Email Template to Default
+  const handleResetCustomerEmailTemplate = () => {
+    if (window.confirm('Kembalikan format pesan email customer ke template bawaan studio?')) {
+      const resetConfig: StudioConfig = {
+        ...studioConfig,
+        customerEmailSubject: DEFAULT_CUSTOMER_EMAIL_SUBJECT,
+        customerEmailGreeting: DEFAULT_CUSTOMER_EMAIL_GREETING,
+        customerEmailMessage: DEFAULT_CUSTOMER_EMAIL_MESSAGE,
+        customerEmailInstructions: DEFAULT_CUSTOMER_EMAIL_INSTRUCTIONS,
+        customerEmailFooter: DEFAULT_CUSTOMER_EMAIL_FOOTER,
+      };
+      setStudioConfig(resetConfig);
+      setSuccessNotif('Template email customer dikembalikan ke format bawaan studio.');
+      setTimeout(() => setSuccessNotif(''), 2500);
+    }
+  };
+
+
   // Reset Demo
   const handleResetData = () => {
     if (window.confirm('Reset semua data layanan, slot, dan booking ke awal?')) {
@@ -735,6 +788,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   ) : null}
                 </button>
 
+
+                <button
+                  onClick={() => setActiveTab('email')}
+                  className={`py-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                    activeTab === 'email'
+                      ? 'border-neutral-950 text-neutral-950 font-bold'
+                      : 'border-transparent text-neutral-500 hover:text-neutral-900'
+                  }`}
+                >
+                  <Mail className="w-4 h-4 text-neutral-800" />
+                  <span>Template Email & Notifikasi</span>
+                </button>
 
                 <button
                   onClick={() => setActiveTab('studio')}
@@ -1823,6 +1888,439 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </div>
             )}
 
+
+            {/* TAB: TEMPLATE EMAIL & NOTIFIKASI BOOKING */}
+            {activeTab === 'email' && (
+              <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
+                {/* Header Information Banner */}
+                <div className="p-4 bg-neutral-900 text-white rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                      <Mail className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider">
+                        EMAIL DISPATCH & NOTIFICATION SETTINGS
+                      </div>
+                      <h4 className="text-sm sm:text-base font-bold font-display">
+                        Kustomisasi Pesan Email Booking & Notifikasi Admin
+                      </h4>
+                      <p className="text-xs text-neutral-300 mt-0.5">
+                        Sesuaikan kata-kata konfirmasi untuk customer dan aktifkan email masuk ke akun Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="text-[11px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-3 py-1 rounded-full font-semibold self-start sm:self-auto shrink-0">
+                    Live Cloud Sync
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveEmailConfig} className="space-y-6">
+                  {/* BAGIAN 1: NOTIFIKASI EMAIL KE PEMILIK STUDIO (ADMIN) */}
+                  <div className="p-5 bg-white rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
+                      <div>
+                        <h5 className="text-sm font-bold text-neutral-950 flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 font-mono text-xs flex items-center justify-center font-bold">1</span>
+                          <span>Notifikasi Otomatis ke Email Pemilik Studio</span>
+                        </h5>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          Dapatkan email pemberitahuan setiap kali ada customer yang melakukan booking dari website.
+                        </p>
+                      </div>
+
+                      {/* Toggle Active */}
+                      <label className="inline-flex items-center gap-2.5 cursor-pointer bg-neutral-50 px-3 py-1.5 rounded-xl border border-neutral-200 self-start sm:self-auto">
+                        <input
+                          type="checkbox"
+                          checked={studioConfig.enableAdminNotification !== false}
+                          onChange={(e) =>
+                            setStudioConfig({
+                              ...studioConfig,
+                              enableAdminNotification: e.target.checked,
+                            })
+                          }
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 relative" />
+                        <span className="text-xs font-semibold text-neutral-800">
+                          {studioConfig.enableAdminNotification !== false ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Alamat Email Studio Anda (Penerima Notifikasi) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="email"
+                            required
+                            value={studioConfig.adminEmail || 'yayphotostudio@gmail.com'}
+                            onChange={(e) =>
+                              setStudioConfig({ ...studioConfig, adminEmail: e.target.value })
+                            }
+                            placeholder="yayphotostudio@gmail.com"
+                            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-mono font-medium focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                          />
+                          <Mail className="w-3.5 h-3.5 text-neutral-400 absolute left-2.5 top-2.5" />
+                        </div>
+                        <p className="text-[11px] text-neutral-500 mt-1">
+                          Default: <strong className="text-neutral-800 font-mono">yayphotostudio@gmail.com</strong>
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                          Subjek Email Notifikasi Admin
+                        </label>
+                        <input
+                          type="text"
+                          value={
+                            studioConfig.adminNotificationSubject ||
+                            DEFAULT_ADMIN_EMAIL_SUBJECT
+                          }
+                          onChange={(e) =>
+                            setStudioConfig({
+                              ...studioConfig,
+                              adminNotificationSubject: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-medium focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                        />
+                        <p className="text-[11px] text-neutral-500 mt-1">
+                          Variabel yang didukung: <code className="bg-neutral-100 px-1 py-0.5 rounded text-[10px]">&#123;serviceName&#125;</code>, <code className="bg-neutral-100 px-1 py-0.5 rounded text-[10px]">&#123;customerName&#125;</code>, <code className="bg-neutral-100 px-1 py-0.5 rounded text-[10px]">&#123;bookingId&#125;</code>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BAGIAN 2: EDIT PESAN KONFIRMASI EMAIL KE CUSTOMER */}
+                  <div className="p-5 bg-white rounded-2xl border border-neutral-200 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
+                      <div>
+                        <h5 className="text-sm font-bold text-neutral-950 flex items-center gap-2">
+                          <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 font-mono text-xs flex items-center justify-center font-bold">2</span>
+                          <span>Format Pesan Konfirmasi Booking ke Email Customer</span>
+                        </h5>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          Teks ini akan otomatis ditampilkan dan dikirimkan saat customer menyelesaikan reservasi.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleResetCustomerEmailTemplate}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:text-neutral-950 bg-neutral-100 hover:bg-neutral-200/80 rounded-lg transition-colors self-start sm:self-auto shrink-0"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Kembalikan ke Default</span>
+                      </button>
+                    </div>
+
+                    {/* Tag Helper Toolbar */}
+                    <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/70 space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-700">
+                        <span>Klik tag di bawah untuk menyalin variabel otomatis:</span>
+                        {copiedVariableTag && (
+                          <span className="text-emerald-600 font-bold animate-fade-in">
+                            ✓ {copiedVariableTag} tersalin!
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { tag: '{nama}', desc: 'Nama Pelanggan' },
+                          { tag: '{kode_booking}', desc: 'Kode Booking' },
+                          { tag: '{layanan}', desc: 'Nama Layanan' },
+                          { tag: '{tanggal}', desc: 'Hari & Tanggal' },
+                          { tag: '{jam}', desc: 'Jam Sesi' },
+                          { tag: '{backdrop}', desc: 'Backdrop' },
+                          { tag: '{jumlah_orang}', desc: 'Jumlah Orang' },
+                          { tag: '{total_biaya}', desc: 'Total Biaya' },
+                          { tag: '{nama_studio}', desc: 'Nama Studio' },
+                          { tag: '{alamat}', desc: 'Alamat' },
+                          { tag: '{whatsapp}', desc: 'No. WA' },
+                        ].map((item) => (
+                          <button
+                            key={item.tag}
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.tag);
+                              setCopiedVariableTag(item.tag);
+                              setTimeout(() => setCopiedVariableTag(''), 2000);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-neutral-200/60 border border-neutral-300 rounded-lg text-[11px] font-mono text-neutral-800 transition-colors shadow-2xs"
+                            title={item.desc}
+                          >
+                            <Copy className="w-2.5 h-2.5 opacity-60" />
+                            <span>{item.tag}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Subject Input */}
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Subjek / Judul Email Customer
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          studioConfig.customerEmailSubject ||
+                          DEFAULT_CUSTOMER_EMAIL_SUBJECT
+                        }
+                        onChange={(e) =>
+                          setStudioConfig({
+                            ...studioConfig,
+                            customerEmailSubject: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-medium focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Greeting Input */}
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Salam Pembuka (Greeting)
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          studioConfig.customerEmailGreeting ||
+                          DEFAULT_CUSTOMER_EMAIL_GREETING
+                        }
+                        onChange={(e) =>
+                          setStudioConfig({
+                            ...studioConfig,
+                            customerEmailGreeting: e.target.value,
+                          })
+                        }
+                        placeholder="Contoh: Halo {customerName},"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-medium focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Message Body Input */}
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Pesan Pembuka / Ucapan Terima Kasih
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={
+                          studioConfig.customerEmailMessage ||
+                          DEFAULT_CUSTOMER_EMAIL_MESSAGE
+                        }
+                        onChange={(e) =>
+                          setStudioConfig({
+                            ...studioConfig,
+                            customerEmailMessage: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white leading-relaxed focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Instructions List Input */}
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Petunjuk & Tata Tertib Sesi Foto (Satu baris per instruksi)
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={
+                          studioConfig.customerEmailInstructions ||
+                          DEFAULT_CUSTOMER_EMAIL_INSTRUCTIONS
+                        }
+                        onChange={(e) =>
+                          setStudioConfig({
+                            ...studioConfig,
+                            customerEmailInstructions: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-mono text-[11px] leading-relaxed focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                      />
+                      <p className="text-[11px] text-neutral-500 mt-1">
+                        Tiap baris baru akan otomatis ditampilkan sebagai nomor urut petunjuk bagi pelanggan.
+                      </p>
+                    </div>
+
+                    {/* Footer Note Input */}
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                        Pesan Penutup / Catatan Kaki (Footer)
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          studioConfig.customerEmailFooter ||
+                          DEFAULT_CUSTOMER_EMAIL_FOOTER
+                        }
+                        onChange={(e) =>
+                          setStudioConfig({
+                            ...studioConfig,
+                            customerEmailFooter: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white focus:ring-1 focus:ring-neutral-950 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* BAGIAN 3: LIVE PREVIEW INTERAKTIF */}
+                  <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-neutral-200">
+                      <div>
+                        <h5 className="text-sm font-bold text-neutral-950 flex items-center gap-1.5">
+                          <Zap className="w-4 h-4 text-amber-600" />
+                          <span>Live Preview Tampilan Email Real-Time</span>
+                        </h5>
+                        <p className="text-xs text-neutral-500">
+                          Pratinjau langsung bagaimana email akan dibaca dengan data pemesanan contoh.
+                        </p>
+                      </div>
+
+                      {/* Tab Preview Toggle */}
+                      <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-neutral-200">
+                        <button
+                          type="button"
+                          onClick={() => setEmailPreviewTab('customer')}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                            emailPreviewTab === 'customer'
+                              ? 'bg-neutral-950 text-white shadow-xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          Email Customer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEmailPreviewTab('admin')}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                            emailPreviewTab === 'admin'
+                              ? 'bg-neutral-950 text-white shadow-xs'
+                              : 'text-neutral-600 hover:text-neutral-900'
+                          }`}
+                        >
+                          Email Admin
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Preview Box */}
+                    {(() => {
+                      const sampleBooking: Booking = bookings[0] || {
+                        id: 'YAY-2610-888',
+                        serviceId: 'self-photo-reguler',
+                        serviceName: 'Self Photo Reguler',
+                        date: new Date().toISOString().split('T')[0],
+                        timeSlot: '18:30',
+                        backdrop: 'Clean Studio White',
+                        peopleCount: 2,
+                        totalPrice: 120000,
+                        paymentNote: studioConfig.paymentNote || 'Pembayaran dapat dilakukan saat di studio',
+                        status: 'confirmed',
+                        createdAt: new Date().toISOString(),
+                        customer: {
+                          name: 'Clara Amanda',
+                          email: 'clara.amanda@example.com',
+                          whatsapp: '081298765432',
+                          notes: 'Sesi foto berdua outfit monokrom',
+                        },
+                      };
+
+                      const custEmail = formatCustomerEmail(sampleBooking, studioConfig);
+                      const admEmail = formatAdminEmail(sampleBooking, studioConfig);
+
+                      return emailPreviewTab === 'customer' ? (
+                        <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 text-xs space-y-3 shadow-xs">
+                          <div className="pb-3 border-b border-neutral-100 font-mono text-[11px] text-neutral-500 space-y-1">
+                            <div><span className="text-neutral-400">Kepada:</span> {sampleBooking.customer.name} &lt;{sampleBooking.customer.email}&gt;</div>
+                            <div><span className="text-neutral-400">Subjek:</span> <strong className="text-neutral-950">{custEmail.subject}</strong></div>
+                          </div>
+
+                          <div className="font-bold text-neutral-950 text-sm">{custEmail.greeting}</div>
+                          <p className="text-neutral-700 leading-relaxed">{custEmail.message}</p>
+
+                          <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 text-[11px] space-y-1">
+                            <div className="font-bold uppercase tracking-wider text-neutral-900 pb-1 border-b border-neutral-200">
+                              Rincian Jadwal Reservasi
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <div><span className="text-neutral-400">Layanan:</span> <span className="font-semibold text-neutral-800">{sampleBooking.serviceName}</span></div>
+                              <div><span className="text-neutral-400">Backdrop:</span> <span className="font-semibold text-neutral-800">{sampleBooking.backdrop}</span></div>
+                              <div><span className="text-neutral-400">Jadwal:</span> <span className="font-semibold text-neutral-800">{formatDateIndo(sampleBooking.date)} ({sampleBooking.timeSlot} WITA)</span></div>
+                              <div><span className="text-neutral-400">Total:</span> <span className="font-bold font-mono text-neutral-950">{formatIDR(sampleBooking.totalPrice)}</span></div>
+                            </div>
+                          </div>
+
+                          {custEmail.instructions.length > 0 && (
+                            <div className="space-y-1 text-neutral-700 text-[11px]">
+                              <span className="font-bold text-neutral-900">Petunjuk Sesi Foto:</span>
+                              <ul className="space-y-0.5 pl-3 list-disc">
+                                {custEmail.instructions.map((ins, i) => (
+                                  <li key={i}>{ins}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {custEmail.footer && (
+                            <div className="text-[11px] text-neutral-600 italic pt-1">{custEmail.footer}</div>
+                          )}
+
+                          <div className="text-[10px] text-neutral-400 pt-2 border-t border-neutral-100">
+                            Studio: {studioConfig.name} · {studioConfig.address}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-xl border border-neutral-200 p-4 sm:p-5 text-xs space-y-3 shadow-xs">
+                          <div className="pb-3 border-b border-neutral-100 font-mono text-[11px] text-neutral-500 space-y-1">
+                            <div><span className="text-neutral-400">Penerima:</span> <strong className="text-neutral-950">{admEmail.to}</strong></div>
+                            <div><span className="text-neutral-400">Subjek:</span> <strong className="text-neutral-950">{admEmail.subject}</strong></div>
+                          </div>
+
+                          <div className="bg-amber-50 text-amber-900 border border-amber-200 p-2.5 rounded-lg text-xs font-semibold">
+                            Pemberitahuan: Booking Baru Masuk ke Kalender Studio
+                          </div>
+
+                          <pre className="p-3 bg-neutral-50 rounded-xl border border-neutral-200 font-mono text-[11px] text-neutral-800 whitespace-pre-wrap leading-relaxed">
+                            {admEmail.body}
+                          </pre>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={isSavingEmail}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-98"
+                    >
+                      {isSavingEmail ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Menyimpan ke Cloud...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          <span>Simpan Template Email & Notifikasi</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
 
             {/* TAB 4: INFO STUDIO & TEKS WEBSITE */}
             {activeTab === 'studio' && (

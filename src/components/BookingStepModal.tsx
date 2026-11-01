@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { Service, Booking } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
-import { generateBookingId, saveBooking, getMakassarDateTime } from '../utils/storage';
+import { generateBookingId, saveBooking, getMakassarDateTime, getStoredStudioConfig } from '../utils/storage';
 import { CalendlyDateTimeSelector } from './CalendlyDateTimeSelector';
 import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
 import { getAccessToken } from '../utils/googleAuth';
 import { createGoogleCalendarEvent } from '../utils/googleCalendar';
 import { saveBookingToCloud } from '../utils/firestoreService';
+import { dispatchBookingNotifications } from '../utils/emailService';
+
 
 interface BookingStepModalProps {
   isOpen: boolean;
@@ -77,6 +79,14 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
     saveBookingToCloud(newBooking).catch((err) => {
       console.warn('Cloud booking save note:', err);
     });
+
+    // Prepare and dispatch email notifications (customer confirmation & admin notification)
+    try {
+      const currentConfig = getStoredStudioConfig();
+      dispatchBookingNotifications(newBooking, currentConfig);
+    } catch (emailErr) {
+      console.warn('Email dispatch note:', emailErr);
+    }
 
     // Auto-sync to Google Calendar if access token is active
     try {

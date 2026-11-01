@@ -9,7 +9,15 @@ export const STUDIO_CONFIG: StudioConfig = {
   operatingHours: "Setiap Hari · 10:00 - 21:30 WITA (GMT+8 · Makassar)",
   instagram: "@yayphotostudio",
   paymentNote: "Pembayaran dapat dilakukan saat di studio",
+  customerEmailSubject: "Konfirmasi Booking {studioName} - #{bookingId}",
+  customerEmailGreeting: "Halo {customerName},",
+  customerEmailMessage: "Terima kasih telah melakukan reservasi di {studioName}. Jadwal sesi foto Anda telah berhasil dikonfirmasi dan dicatat dalam kalender studio kami.",
+  customerEmailInstructions: "1. Harap hadir di studio paling lambat 10 menit sebelum jam sesi dimulai.\n2. Aksesoris bando, topi, kacamata aesthetic & properti foto tersedia gratis di studio.\n3. Semua soft files digital original akan diunggah ke link Google Drive dan dikirimkan ke email ini.",
+  customerEmailFooter: "Sampai jumpa di studio! Jika ada pertanyaan atau ingin merubah jadwal, silakan hubungi WhatsApp kami di {whatsappNumber}.",
+  enableAdminNotification: true,
+  adminNotificationSubject: "[Booking Baru Masuk] {serviceName} - {customerName} (#{bookingId})",
 };
+
 
 // Default high-aesthetic Korean studio SVG preview illustrations (Portrait 3:4 aspect ratio - 600x800)
 const DEFAULT_SELF_PHOTO_IMG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800"><rect width="600" height="800" fill="%23171717"/><rect x="30" y="30" width="540" height="740" rx="24" fill="%23242424" stroke="%23383838" stroke-width="2"/><circle cx="210" cy="300" r="70" fill="%23e5e5e5"/><circle cx="390" cy="300" r="70" fill="%23d4d4d4"/><path d="M100 520 C100 410 320 410 320 520 Z" fill="%23e5e5e5"/><path d="M280 520 C280 410 500 410 500 520 Z" fill="%23d4d4d4"/><rect x="180" y="520" width="240" height="130" rx="16" fill="%231a1a1a" stroke="%23333333"/><circle cx="300" cy="565" r="16" fill="%23171717" stroke="%23ffffff" stroke-width="3"/><path d="M300 581 L300 625" stroke="%23ffffff" stroke-width="2" stroke-dasharray="4,4"/><rect x="50" y="60" width="120" height="30" rx="8" fill="%230a0a0a"/><text x="110" y="80" fill="%23ffffff" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">PHOTO STRIP 3:4</text><rect x="420" y="60" width="130" height="30" rx="8" fill="%230a0a0a"/><text x="485" y="80" fill="%2310b981" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">WIRELESS CLICKER</text><text x="300" y="685" fill="%23ffffff" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle" letter-spacing="2">SELF PHOTO REGULER</text><text x="300" y="715" fill="%23a3a3a3" font-family="sans-serif" font-size="13" text-anchor="middle">Ruang Mandiri · Remote Bebas · All Soft Files</text></svg>`;

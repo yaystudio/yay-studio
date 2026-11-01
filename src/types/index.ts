@@ -75,4 +75,14 @@ export interface StudioConfig {
   operatingHours: string;
   instagram: string;
   paymentNote: string;
+  // Customizable Customer Confirmation Email Template
+  customerEmailSubject?: string;
+  customerEmailGreeting?: string;
+  customerEmailMessage?: string;
+  customerEmailInstructions?: string;
+  customerEmailFooter?: string;
+  // Admin Notification Email Settings
+  enableAdminNotification?: boolean;
+  adminNotificationSubject?: string;
 }
+

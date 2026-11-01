@@ -33,7 +33,14 @@
         "adminPin": { "type": "string" },
         "openTime": { "type": "string" },
         "closeTime": { "type": "string" },
-        "defaultDurationMinutes": { "type": "number" }
+        "defaultDurationMinutes": { "type": "number" },
+        "customerEmailSubject": { "type": "string" },
+        "customerEmailGreeting": { "type": "string" },
+        "customerEmailMessage": { "type": "string" },
+        "customerEmailInstructions": { "type": "string" },
+        "customerEmailFooter": { "type": "string" },
+        "enableAdminNotification": { "type": "boolean" },
+        "adminNotificationSubject": { "type": "string" }
       },
       "required": ["name", "whatsappNumber"]
     },

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Booking } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
-import { formatIDR, formatDateIndo } from '../utils/storage';
+import { formatIDR, formatDateIndo, getStoredStudioConfig } from '../utils/storage';
 import {
   createGoogleCalendarEvent,
   generateGoogleCalendarWebUrl,
@@ -42,6 +42,7 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
   const [eventLink, setEventLink] = useState<string>('');
   const [syncError, setSyncError] = useState<string>('');
   const [autoSynced, setAutoSynced] = useState<boolean>(false);
+  const studioConfig = getStoredStudioConfig();
 
   useEffect(() => {
     if (isOpen && booking) {
@@ -187,8 +188,9 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
             </div>
             <div className="flex items-center gap-1.5 text-neutral-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>Notifikasi masuk ke admin: <strong>{STUDIO_CONFIG.adminEmail}</strong></span>
+              <span>Notifikasi masuk ke admin: <strong>{studioConfig.adminEmail || STUDIO_CONFIG.adminEmail}</strong></span>
             </div>
+
           </div>
         </div>
 

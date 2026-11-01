@@ -10,7 +10,7 @@ import {
 import { db, auth } from './firebase';
 import { Service, StudioConfig, Booking } from '../types';
 import { getStoredServices, getStoredStudioConfig, getStoredBookings } from './storage';
-import { SERVICES } from '../data/studioData';
+import { SERVICES, STUDIO_CONFIG } from '../data/studioData';
 
 export enum OperationType {
   CREATE = 'create',
@@ -182,9 +182,10 @@ export function subscribeToStudioConfig(
           onConfigUpdate(initialConfig);
         } else {
           const data = snapshot.data() as StudioConfig;
-          onConfigUpdate(data);
+          const merged: StudioConfig = { ...STUDIO_CONFIG, ...data };
+          onConfigUpdate(merged);
           try {
-            localStorage.setItem('yay_studio_config_v3', JSON.stringify(data));
+            localStorage.setItem('yay_studio_config_v3', JSON.stringify(merged));
           } catch {}
         }
       } catch (err) {
