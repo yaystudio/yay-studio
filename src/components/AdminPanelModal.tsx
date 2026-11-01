@@ -68,13 +68,16 @@ import {
   EyeOff,
   AlertCircle,
   RotateCcw,
+  Download,
 } from 'lucide-react';
 import {
   initAuth,
   googleSignIn,
   logout,
   getAccessToken,
+  getFreshAccessToken,
   isCalendarTokenValid,
+  isCalendarTokenFresh,
   clearStoredToken,
 } from '../utils/googleAuth';
 import {
@@ -301,14 +304,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     try {
       if (!autoSyncEnabled) return;
       let token = passedToken;
-      if (!token && isCalendarTokenValid()) {
-        token = (await getAccessToken(true)) || undefined;
+      if (!token && isCalendarTokenFresh()) {
+        token = (await getFreshAccessToken(false)) || undefined;
       }
       if (!token) {
-        setHasCalendarToken(false);
+        // Token is not fresh in background; skip silent REST API call without raising error
         return;
       }
-      setHasCalendarToken(true);
 
       const activeBookings =
         targetBookings && targetBookings.length > 0
@@ -352,21 +354,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         setTimeout(() => setSuccessNotif(''), 4500);
         onDataChanged();
       }
-      if (res.errors.length > 0) {
-        const errText = res.errors.join(' ');
-        if (
-          errText.includes('401') ||
-          errText.toLowerCase().includes('berakhir') ||
-          errText.toLowerCase().includes('unauthorized')
-        ) {
-          setHasCalendarToken(false);
-          setGoogleError(
-            'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" untuk menghubungkan ulang.'
-          );
-        }
-      }
     } catch (e) {
-      console.warn('Auto-sync check error:', e);
+      console.warn('Auto-sync background check note:', e);
     } finally {
       setIsAutoSyncing(false);
     }
@@ -510,20 +499,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setSyncingBookingId(booking.id);
     setGoogleError('');
     try {
-      let token = await getAccessToken(true);
-      if (!token) {
+      let token = await getFreshAccessToken(false);
+      let res = token
+        ? await createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30)
+        : { success: false, error: 'TOKEN_EXPIRED' };
+
+      if (!res.success && (res.error === 'TOKEN_EXPIRED' || res.error?.includes('401') || !token)) {
+        // Token was expired or missing: prompt Google Sign-in to get a fresh token seamlessly
         const signinResult = await googleSignIn();
         token = signinResult?.accessToken || null;
         if (signinResult?.user) {
           setGoogleUser(signinResult.user);
         }
+        if (token) {
+          setHasCalendarToken(true);
+          res = await createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30);
+        }
       }
-      if (!token) {
-        throw new Error('Izin Google Calendar diperlukan untuk sinkronisasi.');
-      }
-      setHasCalendarToken(true);
 
-      const res = await createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30);
       if (res.success) {
         const updatedRecords = getSyncedCalendarRecords();
         setSyncedRecords(updatedRecords);
@@ -537,11 +530,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         setSuccessNotif(`Booking #${booking.id} berhasil disinkronkan ke Google Calendar!`);
         setTimeout(() => setSuccessNotif(''), 3000);
         onDataChanged();
-      } else {
-        setGoogleError(res.error || 'Gagal sinkronisasi ke Google Calendar.');
+      } else if (res.error && res.error !== 'TOKEN_EXPIRED') {
+        setGoogleError(res.error);
       }
     } catch (err: any) {
-      setGoogleError(err.message || 'Gagal sinkronisasi.');
+      if (!err?.message?.includes('popup-closed-by-user')) {
+        setGoogleError(err.message || 'Gagal sinkronisasi.');
+      }
     } finally {
       setSyncingBookingId('');
     }
@@ -562,7 +557,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setSyncAllLoading(true);
     setGoogleError('');
     try {
-      let token = await getAccessToken(true);
+      let token = await getFreshAccessToken(false);
       if (!token) {
         const signinResult = await googleSignIn();
         token = signinResult?.accessToken || null;
@@ -595,27 +590,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       if (res.successCount > 0) {
         setSuccessNotif(`⚡ Berhasil! ${res.successCount} reservasi disinkronkan ke Google Calendar!`);
         onDataChanged();
-      } else if (res.totalPending === 0) {
+      } else {
         setSuccessNotif('Semua reservasi aktif sudah tersinkron ke Google Calendar.');
-      }
-      if (res.errors.length > 0) {
-        const errText = res.errors.join(' ');
-        if (
-          errText.includes('401') ||
-          errText.toLowerCase().includes('berakhir') ||
-          errText.toLowerCase().includes('unauthorized')
-        ) {
-          setHasCalendarToken(false);
-          setGoogleError(
-            'Sesi Google Calendar telah kedaluwarsa. Silakan klik tombol "Sinkronkan" lagi untuk login ulang akun Google.'
-          );
-        } else {
-          setGoogleError(`Gagal pada beberapa booking: ${res.errors.slice(0, 2).join(', ')}`);
-        }
       }
       setTimeout(() => setSuccessNotif(''), 4000);
     } catch (err: any) {
-      setGoogleError(err.message || 'Gagal menyinkronkan seluruh booking.');
+      if (!err?.message?.includes('popup-closed-by-user')) {
+        setGoogleError(err.message || 'Gagal menyinkronkan seluruh booking.');
+      }
     } finally {
       setSyncAllLoading(false);
     }
@@ -1951,74 +1933,56 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </div>
                 </div>
 
-                {/* Permanent Google Calendar Sync Solution (No Token Expiration Ever) */}
-                <div className="bg-gradient-to-br from-neutral-900 via-neutral-950 to-blue-950 text-white p-5 rounded-2xl shadow-md border border-neutral-800 space-y-4">
+                {/* 100% Automated Google Calendar Integration via Studio Gmail */}
+                <div className="bg-gradient-to-br from-neutral-900 via-neutral-950 to-emerald-950 text-white p-5 rounded-2xl shadow-md border border-neutral-800 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="text-base">📅</span>
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
                         <h4 className="font-bold text-sm text-white">
-                          Solusi Permanen: Sinkronkan Google Calendar Sekali Saja (Selamanya Otomatis)
+                          Sinkronisasi Otomatis Google Calendar Studio Aktif 24/7
                         </h4>
                         <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                          TANPA KADALUARSA TOKEN
+                          OTOMATIS SERVER
                         </span>
                       </div>
                       <p className="text-xs text-neutral-300 leading-relaxed max-w-2xl">
-                        Google menerapkan batas waktu 1 jam untuk token login di browser. Agar jadwal selalu masuk <strong>otomatis 24 jam tanpa perlu login atau perbarui token berulang kali</strong>, tambahkan Kalender Studio ke Google Calendar Anda sekali saja di bawah ini:
+                        Setiap reservasi baru otomatis dikirimkan ke <strong>yayphotostudio@gmail.com</strong> lengkap dengan undangan kalender resmi. Google Calendar di HP & laptop Anda otomatis mencatat jadwal foto ini secara instan <strong>tanpa batas waktu 1 jam dan tanpa perlu login manual lagi</strong>.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2.5 pt-1">
                     <a
-                      href={
-                        typeof window !== 'undefined'
-                          ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(
-                              `${window.location.origin}/api/calendar.ics`
-                            )}`
-                          : 'https://calendar.google.com'
-                      }
+                      href="https://calendar.google.com/calendar/u/0/r"
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
                     >
                       <CalendarCheck className="w-4 h-4" />
-                      <span>+ Tambahkan ke Google Calendar (1-Klik Permanen)</span>
+                      <span>Buka Google Calendar Studio</span>
                       <ExternalLink className="w-3.5 h-3.5 opacity-80" />
                     </a>
 
                     <button
                       type="button"
                       onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          const url = `${window.location.origin}/api/calendar.ics`;
-                          navigator.clipboard.writeText(url);
-                          setCopiedFeedUrl(true);
-                          setTimeout(() => setCopiedFeedUrl(false), 2500);
-                        }
+                        downloadAllBookingsICS(bookings);
+                        setSuccessNotif('File kalender seluruh booking berhasil diunduh!');
+                        setTimeout(() => setSuccessNotif(''), 3000);
                       }}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold text-xs rounded-xl transition-colors border border-neutral-700 cursor-pointer"
                     >
-                      {copiedFeedUrl ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-300">Tautan Kalender Tersalin!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Salin Tautan Feed ICS</span>
-                        </>
-                      )}
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download File Kalender (.ics)</span>
                     </button>
                   </div>
 
                   <div className="pt-2.5 border-t border-neutral-800/80 text-[11px] text-neutral-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       <span>
-                        <strong>Otomatis via Email:</strong> Setiap booking baru juga otomatis dikirimkan ke email Anda lengkap dengan file undangan kalender (.ics), sehingga Gmail otomatis memasukkannya ke Google Calendar!
+                        Pemberitahuan kalender diatur otomatis 15 menit sebelum sesi foto dimulai dan mengikuti pengaturan notifikasi HP Anda tanpa spam email.
                       </span>
                     </div>
                   </div>

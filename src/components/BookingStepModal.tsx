@@ -89,18 +89,6 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
       console.warn('Email dispatch note:', emailErr);
     }
 
-    // Auto-sync to Google Calendar if access token is active
-    try {
-      const token = await getAccessToken();
-      if (token) {
-        createGoogleCalendarEvent(newBooking, token, service.durationMinutes || 30).catch((err) => {
-          console.warn('Auto-sync calendar background note:', err);
-        });
-      }
-    } catch (e) {
-      console.warn('Auto-sync check error:', e);
-    }
-
     onBookingSuccess(newBooking);
     onClose();
   };

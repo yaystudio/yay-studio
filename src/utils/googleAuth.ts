@@ -88,17 +88,39 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
   }
 };
 
+export const isCalendarTokenFresh = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const token = cachedAccessToken || localStorage.getItem(GCAL_ACCESS_TOKEN_KEY);
+  if (!token || token === 'gcal_authenticated') return false;
+  const expiryStr = localStorage.getItem(GCAL_TOKEN_EXPIRY_KEY);
+  if (!expiryStr) return false;
+  const expiry = parseInt(expiryStr, 10);
+  return !isNaN(expiry) && Date.now() < expiry;
+};
+
 export const getAccessToken = async (requireValid = true): Promise<string | null> => {
-  if (requireValid && !isCalendarTokenValid()) {
+  if (requireValid && !isCalendarTokenFresh()) {
     return null;
   }
-  if (cachedAccessToken) return cachedAccessToken;
+  if (cachedAccessToken && cachedAccessToken !== 'gcal_authenticated') return cachedAccessToken;
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem(GCAL_ACCESS_TOKEN_KEY);
-    if (stored) {
+    if (stored && stored !== 'gcal_authenticated') {
       cachedAccessToken = stored;
       return stored;
     }
+  }
+  return null;
+};
+
+export const getFreshAccessToken = async (interactive = false): Promise<string | null> => {
+  if (isCalendarTokenFresh()) {
+    const token = cachedAccessToken || (typeof window !== 'undefined' ? localStorage.getItem(GCAL_ACCESS_TOKEN_KEY) : null);
+    if (token && token !== 'gcal_authenticated') return token;
+  }
+  if (interactive) {
+    const res = await googleSignIn();
+    return res?.accessToken || null;
   }
   return null;
 };

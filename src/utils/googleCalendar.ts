@@ -171,10 +171,10 @@ export async function createGoogleCalendarEvent(
       }
       if (response.status === 401) {
         clearStoredToken();
-        throw new Error('Sesi Google Calendar berakhir (401 Unauthorized). Silakan klik untuk login ulang.');
+        return { success: false, error: 'TOKEN_EXPIRED' };
       }
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData?.error?.message || `Google Calendar API error: ${response.status}`);
+      return { success: false, error: errorData?.error?.message || `Google Calendar API error: ${response.status}` };
     }
 
     const data = await response.json();

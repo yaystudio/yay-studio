@@ -246,23 +246,26 @@ app.post('/api/send-booking-email', async (req, res) => {
       'STATUS:CONFIRMED',
       `ORGANIZER;CN="${studioName}":mailto:${senderUser}`,
       `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Admin Yay Studio":mailto:${adminEmail}`,
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      'DESCRIPTION:Pengingat Sesi Foto Yay Studio',
+      'TRIGGER:-PT15M',
+      'END:VALARM',
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
 
-    // Send to Admin notification email without auto-RSVP REQUEST to prevent duplicate events in Google Calendar
+    // Send to Admin with official calendar invite so Gmail automatically & permanently adds to Google Calendar
     const sendAdminPromise = transporter.sendMail({
       from: fromAddress,
       to: adminEmail,
       subject: adminSubject,
       html: adminHtml,
-      attachments: [
-        {
-          filename: `jadwal-${booking.id}.ics`,
-          content: icsBookingEvent,
-          contentType: 'text/calendar; charset=utf-8',
-        },
-      ],
+      icalEvent: {
+        filename: `jadwal-${booking.id}.ics`,
+        method: 'REQUEST',
+        content: icsBookingEvent,
+      },
     });
 
     // Send single confirmation to Customer without separate RSVP invitation so customer receives ONLY 1 email
