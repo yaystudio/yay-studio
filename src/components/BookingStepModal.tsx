@@ -62,6 +62,7 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
       id: bookingId,
       serviceId: service.id,
       serviceName: service.name,
+      durationMinutes: service.durationMinutes || 30,
       date: selectedDate,
       timeSlot: selectedTimeSlot,
       backdrop: finalData.backdrop,

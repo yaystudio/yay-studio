@@ -523,7 +523,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
       }
       setHasCalendarToken(true);
 
-      const res = await createGoogleCalendarEvent(booking, token, 30);
+      const res = await createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30);
       if (res.success) {
         const updatedRecords = getSyncedCalendarRecords();
         setSyncedRecords(updatedRecords);

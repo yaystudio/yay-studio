@@ -76,7 +76,7 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
         getAccessToken().then((token) => {
           if (token) {
             setIsSyncing(true);
-            createGoogleCalendarEvent(booking, token, 30)
+            createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30)
               .then((res) => {
                 if (res.success) {
                   setSyncSuccess(true);
@@ -162,7 +162,7 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
         throw new Error('Izin Google Calendar belum diberikan.');
       }
 
-      const res = await createGoogleCalendarEvent(booking, token, 30);
+      const res = await createGoogleCalendarEvent(booking, token, booking.durationMinutes || 30);
       if (res.success) {
         setSyncSuccess(true);
         setEventLink(res.htmlLink || '');
@@ -370,7 +370,7 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => downloadCalendarICSFile(booking, 30)}
+                onClick={() => downloadCalendarICSFile(booking, booking.durationMinutes || 30)}
                 className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-semibold text-neutral-800 bg-neutral-100 hover:bg-neutral-200 active:scale-98 rounded-xl transition-all"
               >
                 <Download className="w-3.5 h-3.5 text-neutral-600" />

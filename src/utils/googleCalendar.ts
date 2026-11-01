@@ -80,7 +80,8 @@ export async function createGoogleCalendarEvent(
   durationMinutes = 30
 ): Promise<{ success: boolean; eventId?: string; htmlLink?: string; error?: string }> {
   try {
-    const { startISO, endISO } = getMakassarStartEndISO(booking.date, booking.timeSlot, durationMinutes);
+    const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
+    const { startISO, endISO } = getMakassarStartEndISO(booking.date, booking.timeSlot, effectiveDuration);
 
     const currentConfig = getStoredStudioConfig();
     const studioAddress = currentConfig.address || '';
@@ -209,7 +210,8 @@ export async function createGoogleCalendarEvent(
  * Allows users to add the event directly in browser with 1 click
  */
 export function generateGoogleCalendarWebUrl(booking: Booking, durationMinutes = 30): string {
-  const { googleWebDatesParam } = getMakassarStartEndISO(booking.date, booking.timeSlot, durationMinutes);
+  const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
+  const { googleWebDatesParam } = getMakassarStartEndISO(booking.date, booking.timeSlot, effectiveDuration);
 
   const title = encodeURIComponent(`Yay Photo Studio: ${booking.serviceName} (#${booking.id})`);
   const currentConfig = getStoredStudioConfig();
@@ -260,7 +262,7 @@ export async function syncAllPendingBookings(
 
   for (let i = 0; i < pending.length; i++) {
     const booking = pending[i];
-    const res = await createGoogleCalendarEvent(booking, accessToken, 30);
+    const res = await createGoogleCalendarEvent(booking, accessToken, booking.durationMinutes || 30);
     if (res.success) {
       successCount++;
     } else {
@@ -278,12 +280,13 @@ export async function syncAllPendingBookings(
  * Generates an iCalendar (.ics) file content string
  */
 export function generateICSContent(booking: Booking, durationMinutes = 30): string {
+  const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
   const pad = (n: number) => String(n).padStart(2, '0');
   const [hourStr, minStr] = booking.timeSlot.split(':');
   const startHour = parseInt(hourStr || '10', 10);
   const startMin = parseInt(minStr || '00', 10);
   const totalStartMinutes = startHour * 60 + startMin;
-  const totalEndMinutes = totalStartMinutes + durationMinutes;
+  const totalEndMinutes = totalStartMinutes + effectiveDuration;
   const endHour = Math.floor(totalEndMinutes / 60);
   const endMin = totalEndMinutes % 60;
   const cleanDate = booking.date.replace(/-/g, '');

@@ -217,16 +217,103 @@ export function toggleBlockSlot(date: string, timeSlot: string): BlockedSlot[] {
   return updated;
 }
 
-export function isSlotAvailable(date: string, timeSlot: string): { available: boolean; reason?: 'booked' | 'blocked' } {
+/**
+ * Mengubah string format jam "HH:MM" (e.g. "10:00", "18:30 WITA") ke total menit dari 00:00
+ */
+export function parseTimeToMinutes(timeStr: string): number | null {
+  if (!timeStr) return null;
+  const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  if (isNaN(hours) || isNaN(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+/**
+ * Menghitung durasi sesi (dalam menit) dari suatu booking
+ */
+export function getBookingDurationMinutes(booking: Booking, services?: Service[]): number {
+  if (booking.durationMinutes && booking.durationMinutes > 0) {
+    return Number(booking.durationMinutes);
+  }
+  const allServices = services || getStoredServices();
+  const matchedService = allServices.find(
+    (s) => s.id === booking.serviceId || s.name.toLowerCase() === booking.serviceName?.toLowerCase()
+  );
+  if (matchedService && matchedService.durationMinutes) {
+    return Number(matchedService.durationMinutes);
+  }
+  if (
+    booking.serviceId === 'profile-self-photo' ||
+    booking.serviceName?.toLowerCase().includes('profile')
+  ) {
+    return 40;
+  }
+  if (
+    booking.serviceId === 'photo-by-photographer' ||
+    booking.serviceName?.toLowerCase().includes('photographer')
+  ) {
+    return 60;
+  }
+  return 30; // default 30 menit untuk reguler self photo
+}
+
+/**
+ * Mengecek apakah dua rentang waktu (interval) saling berbenturan / bertabrakan di studio fisik.
+ * Dua interval bertabrakan jika slotStart < otherEnd && slotEnd > otherStart.
+ */
+export function isIntervalOverlapping(
+  startA: number,
+  durationA: number,
+  startB: number,
+  durationB: number
+): boolean {
+  const endA = startA + durationA;
+  const endB = startB + durationB;
+  return startA < endB && endA > startB;
+}
+
+/**
+ * Mengecek apakah suatu slot jam tersedia dengan memperhitungkan durasi sesi
+ * agar tidak bertabrakan dengan layanan lain yang sedang berlangsung di studio.
+ */
+export function isSlotAvailable(
+  date: string,
+  timeSlot: string,
+  durationMinutes: number = 30
+): { available: boolean; reason?: 'booked' | 'blocked' } {
+  const slotStartMin = parseTimeToMinutes(timeSlot);
+  const slotDuration = durationMinutes || 30;
+  const slotEndMin = slotStartMin !== null ? slotStartMin + slotDuration : null;
+
   const blockedSlots = getStoredBlockedSlots();
-  if (blockedSlots.some((s) => s.date === date && s.timeSlot === timeSlot)) {
+  const isBlocked = blockedSlots.some((s) => {
+    if (s.date !== date) return false;
+    if (slotStartMin === null) return s.timeSlot === timeSlot;
+    const blockStartMin = parseTimeToMinutes(s.timeSlot);
+    if (blockStartMin === null) return s.timeSlot === timeSlot;
+    const blockEndMin = blockStartMin + 30;
+    return slotStartMin < blockEndMin && slotEndMin! > blockStartMin;
+  });
+
+  if (isBlocked) {
     return { available: false, reason: 'blocked' };
   }
 
   const bookings = getStoredBookings();
-  const isBooked = bookings.some(
-    (b) => b.date === date && b.timeSlot === timeSlot && b.status !== 'cancelled'
-  );
+  const allServices = getStoredServices();
+
+  const isBooked = bookings.some((b) => {
+    if (b.date !== date || b.status === 'cancelled') return false;
+    if (slotStartMin === null) return b.timeSlot === timeSlot;
+    const bStartMin = parseTimeToMinutes(b.timeSlot);
+    if (bStartMin === null) return b.timeSlot === timeSlot;
+    const bDuration = getBookingDurationMinutes(b, allServices);
+    const bEndMin = bStartMin + bDuration;
+
+    return slotStartMin < bEndMin && slotEndMin! > bStartMin;
+  });
 
   if (isBooked) {
     return { available: false, reason: 'booked' };
@@ -324,9 +411,10 @@ export function generateServiceTimeSlots(
 
 /**
  * Mengambil slot yang tersedia untuk booking:
- * - Menghitung slot sesuai durasi layanan
+ * - Menghitung slot sesuai durasi layanan yang dipilih
  * - Menghilangkan jam yang sudah lewat pada hari ini (Waktu Makassar GMT+8)
- * - Menghilangkan jam yang sudah terisi/dipesan oleh pelanggan lain
+ * - Menghilangkan jam yang bertabrakan dengan durasi sesi booking manapun yang sudah ada di studio
+ *   (misal: Profile Self Photo 40 menit dari 10:00 - 10:40 akan memblokir slot 10:00 & 10:30 untuk Reguler Self Photo)
  */
 export function getAvailableSlotsForDate(
   service: Service | null | undefined,
@@ -334,15 +422,18 @@ export function getAvailableSlotsForDate(
 ): ServiceTimeSlot[] {
   if (!service || !selectedDate) return [];
 
+  const serviceDuration = Math.max(10, Number(service.durationMinutes) || 30);
+
   const rawSlots = generateServiceTimeSlots(
     service.openTime || '10:00',
     service.closeTime || '21:30',
-    service.durationMinutes || 30
+    serviceDuration
   );
 
   const makassarNow = getMakassarDateTime();
   const bookings = getStoredBookings();
   const blockedSlots = getStoredBlockedSlots();
+  const allServices = getStoredServices();
 
   return rawSlots.filter((slot) => {
     // 1. Jika tanggal sudah lewat kemarin, tidak ada slot
@@ -350,28 +441,49 @@ export function getAvailableSlotsForDate(
       return false;
     }
 
+    const slotStartMin = parseTimeToMinutes(slot.time);
+    if (slotStartMin === null) return false;
+    const slotEndMin = slotStartMin + serviceDuration;
+
     // 2. Jika tanggal adalah HARI INI: jam yang kosong dan sudah lewat dihilangkan
     if (selectedDate === makassarNow.todayDate) {
-      const [sH, sM] = slot.time.split(':').map(Number);
-      const slotMinutes = (isNaN(sH) ? 0 : sH) * 60 + (isNaN(sM) ? 0 : sM);
       // Jika jam sesi sudah lewat dari waktu sekarang di Makassar, hilangkan dari pilihan
-      if (slotMinutes <= makassarNow.currentMinutesTotal) {
+      if (slotStartMin <= makassarNow.currentMinutesTotal) {
         return false;
       }
     }
 
-    // 3. Hilangkan slot yang sudah terisi (booked)
-    const isBooked = bookings.some(
-      (b) => b.date === selectedDate && b.timeSlot === slot.time && b.status !== 'cancelled'
-    );
+    // 3. Hilangkan slot yang bertabrakan dengan sesi foto yang sudah dibooking di studio (shared room)
+    const isBooked = bookings.some((b) => {
+      if (b.date !== selectedDate || b.status === 'cancelled') {
+        return false;
+      }
+      const bStartMin = parseTimeToMinutes(b.timeSlot);
+      if (bStartMin === null) {
+        return b.timeSlot === slot.time;
+      }
+      const bDuration = getBookingDurationMinutes(b, allServices);
+      const bEndMin = bStartMin + bDuration;
+
+      // Benturan terjadi jika rentang waktu sesi yang dipilih bersinggungan dengan sesi yang sudah ada
+      return slotStartMin < bEndMin && slotEndMin > bStartMin;
+    });
+
     if (isBooked) {
       return false;
     }
 
-    // 4. Hilangkan slot yang diblokir (jika ada)
-    const isBlocked = blockedSlots.some(
-      (s) => s.date === selectedDate && s.timeSlot === slot.time
-    );
+    // 4. Hilangkan slot yang diblokir oleh admin
+    const isBlocked = blockedSlots.some((s) => {
+      if (s.date !== selectedDate) return false;
+      const blockStartMin = parseTimeToMinutes(s.timeSlot);
+      if (blockStartMin === null) {
+        return s.timeSlot === slot.time;
+      }
+      const blockEndMin = blockStartMin + 30;
+      return slotStartMin < blockEndMin && slotEndMin > blockStartMin;
+    });
+
     if (isBlocked) {
       return false;
     }

@@ -37,6 +37,7 @@ export interface Booking {
   id: string;
   serviceId: string;
   serviceName: string;
+  durationMinutes?: number;
   date: string; // YYYY-MM-DD
   timeSlot: string; // e.g. "18:30"
   backdrop: string;
