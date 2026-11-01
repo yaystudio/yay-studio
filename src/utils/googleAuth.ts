@@ -29,7 +29,8 @@ export const isCalendarTokenValid = (): boolean => {
   const expiryStr = localStorage.getItem(GCAL_TOKEN_EXPIRY_KEY);
   if (expiryStr) {
     const expiry = parseInt(expiryStr, 10);
-    if (!isNaN(expiry) && Date.now() >= expiry) {
+    // Allow grace window before marking invalid, clearing only on actual API 401
+    if (!isNaN(expiry) && Date.now() >= expiry + 1800 * 1000) {
       return false;
     }
   }

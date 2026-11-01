@@ -214,12 +214,51 @@ app.post('/api/send-booking-email', async (req, res) => {
       </div>
     `;
 
-    // Send to Admin
+    // Generate iCalendar format for automatic Google Calendar event creation
+    const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
+    const startH = parseInt(hStr || '10', 10);
+    const startM = parseInt(mStr || '00', 10);
+    const endMinutes = startH * 60 + startM + 30;
+    const endH = Math.floor(endMinutes / 60);
+    const endM = endMinutes % 60;
+    const cleanD = (booking.date || '').replace(/-/g, '');
+    const dtStart = `${cleanD}T${String(startH).padStart(2, '0')}${String(startM).padStart(2, '0')}00`;
+    const dtEnd = `${cleanD}T${String(endH).padStart(2, '0')}${String(endM).padStart(2, '0')}00`;
+    const dtNow = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+    const icsBookingEvent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Yay Photo Studio//Makassar//ID',
+      'CALSCALE:GREGORIAN',
+      'METHOD:REQUEST',
+      'BEGIN:VEVENT',
+      `UID:yay-booking-${booking.id}@yayphotostudio.com`,
+      `DTSTAMP:${dtNow}`,
+      `DTSTART;TZID=Asia/Makassar:${dtStart}`,
+      `DTEND;TZID=Asia/Makassar:${dtEnd}`,
+      `SUMMARY:[Yay Studio] ${booking.serviceName} - ${booking.customer?.name}`,
+      `DESCRIPTION:Kode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nTanggal: ${booking.date}\\nJam: ${booking.timeSlot} WITA (Makassar)\\nPelanggan: ${booking.customer?.name} (${booking.customer?.whatsapp})\\nTotal: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}${address ? `\\nLokasi: ${address}` : ''}`,
+      ...(address ? [`LOCATION:${address}`] : []),
+      'STATUS:CONFIRMED',
+      `ORGANIZER;CN="${studioName}":mailto:${senderUser}`,
+      `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Admin Yay Studio":mailto:${adminEmail}`,
+      ...(booking.customer?.email ? [`ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="${booking.customer.name}":mailto:${booking.customer.email}`] : []),
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    // Send to Admin with calendar invite
     const sendAdminPromise = transporter.sendMail({
       from: fromAddress,
       to: adminEmail,
       subject: adminSubject,
       html: adminHtml,
+      icalEvent: {
+        filename: `jadwal-${booking.id}.ics`,
+        method: 'REQUEST',
+        content: icsBookingEvent,
+      },
     });
 
     // Also send confirmation to Customer if customer email exists
@@ -273,6 +312,11 @@ app.post('/api/send-booking-email', async (req, res) => {
         to: booking.customer.email,
         subject: customerSubject,
         html: customerHtml,
+        icalEvent: {
+          filename: `jadwal-${booking.id}.ics`,
+          method: 'REQUEST',
+          content: icsBookingEvent,
+        },
       }).catch((e) => {
         console.warn('Customer confirmation email send warning:', e);
         return null;

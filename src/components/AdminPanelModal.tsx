@@ -1963,25 +1963,98 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </div>
                 </div>
 
+                {/* Permanent Google Calendar Sync Solution (No Token Expiration Ever) */}
+                <div className="bg-gradient-to-br from-neutral-900 via-neutral-950 to-blue-950 text-white p-5 rounded-2xl shadow-md border border-neutral-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">📅</span>
+                        <h4 className="font-bold text-sm text-white">
+                          Solusi Permanen: Sinkronkan Google Calendar Sekali Saja (Selamanya Otomatis)
+                        </h4>
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                          TANPA KADALUARSA TOKEN
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-300 leading-relaxed max-w-2xl">
+                        Google menerapkan batas waktu 1 jam untuk token login di browser. Agar jadwal selalu masuk <strong>otomatis 24 jam tanpa perlu login atau perbarui token berulang kali</strong>, tambahkan Kalender Studio ke Google Calendar Anda sekali saja di bawah ini:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                    <a
+                      href={
+                        typeof window !== 'undefined'
+                          ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(
+                              `${window.location.origin}/api/calendar.ics`
+                            )}`
+                          : 'https://calendar.google.com'
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <CalendarCheck className="w-4 h-4" />
+                      <span>+ Tambahkan ke Google Calendar (1-Klik Permanen)</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          const url = `${window.location.origin}/api/calendar.ics`;
+                          navigator.clipboard.writeText(url);
+                          setCopiedFeedUrl(true);
+                          setTimeout(() => setCopiedFeedUrl(false), 2500);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold text-xs rounded-xl transition-colors border border-neutral-700 cursor-pointer"
+                    >
+                      {copiedFeedUrl ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">Tautan Kalender Tersalin!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Salin Tautan Feed ICS</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-neutral-800/80 text-[11px] text-neutral-400 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      <span>
+                        <strong>Otomatis via Email:</strong> Setiap booking baru juga otomatis dikirimkan ke email Anda lengkap dengan file undangan kalender (.ics), sehingga Gmail otomatis memasukkannya ke Google Calendar!
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Notice if Google User is present but calendar OAuth token is expired / needed */}
                 {googleUser && !hasCalendarToken && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                  <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
                     <div className="flex items-start gap-2.5">
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                       <div>
-                        <span className="font-bold text-amber-950 block">Sesi Token Google Calendar Telah Berakhir</span>
+                        <span className="font-bold text-amber-950 block">Perbarui Token API Langsung (Opsi Tambahan)</span>
                         <span className="text-amber-800 text-[11px] leading-relaxed">
-                          Sesuai kebijakan keamanan Google OAuth, token sinkronisasi berumur 1 jam. Klik tombol di samping untuk memperbarui sesi akun Google &amp; menyelesaikan sinkronisasi dengan 1 klik.
+                          Token REST API langsung browser berumur 1 jam sesuai kebijakan Google. Klik tombol di samping jika ingin menyinkronkan data yang belum terkirim via API instan ini.
                         </span>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={handleSyncAllBookings}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-xs"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-xs cursor-pointer"
                     >
                       <Zap className="w-3.5 h-3.5 fill-current" />
-                      <span>Perbarui &amp; Sinkronkan</span>
+                      <span>Perbarui &amp; Sinkronkan Sekarang</span>
                     </button>
                   </div>
                 )}
