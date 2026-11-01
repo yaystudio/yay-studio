@@ -5,7 +5,7 @@ export const STUDIO_CONFIG: StudioConfig = {
   tagline: "Korean Minimalist Self-Photo & Portrait Studio",
   adminEmail: "yayphotostudio@gmail.com",
   whatsappNumber: "6281234567890",
-  address: "Jl. Senopati No. 42, Kebayoran Baru, Jakarta Selatan (Lantai 2)",
+  address: "",
   operatingHours: "Setiap Hari · 10:00 - 21:30 WITA (GMT+8 · Makassar)",
   instagram: "@yayphotostudio",
   paymentNote: "Pembayaran dapat dilakukan saat di studio",

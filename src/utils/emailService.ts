@@ -186,6 +186,70 @@ export function formatAdminEmail(booking: Booking, config: StudioConfig): Format
 }
 
 /**
+ * Sends booking email notifications through the backend server via SMTP/API
+ */
+export async function sendBookingEmailViaApi(
+  booking: Booking,
+  config: StudioConfig
+): Promise<{ success: boolean; delivered?: boolean; notConfigured?: boolean; adminEmail?: string; customerEmail?: string; message?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/send-booking-email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ booking, config }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errData.error || `Server HTTP ${res.status}`,
+      };
+    }
+
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    console.warn('Network error triggering booking email dispatch:', err);
+    return {
+      success: false,
+      error: err.message || 'Gagal menghubungi server email',
+    };
+  }
+}
+
+/**
+ * Tests SMTP credentials by calling the backend /api/test-smtp route
+ */
+export async function testSmtpConnection(params: {
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser: string;
+  smtpPass: string;
+  recipient?: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/test-smtp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || 'Koneksi ke server gagal',
+    };
+  }
+}
+
+/**
  * Dispatch / trigger booking emails log & record
  */
 export function dispatchBookingNotifications(booking: Booking, config: StudioConfig): {
@@ -201,6 +265,17 @@ export function dispatchBookingNotifications(booking: Booking, config: StudioCon
   if (enableAdmin) {
     console.log('[Email Dispatch] Admin notification email prepared for:', adminEmail.to);
   }
+
+  // Attempt real automated backend delivery in the background
+  sendBookingEmailViaApi(booking, config).then((res) => {
+    if (res.delivered) {
+      console.log('✓ Booking notification email delivered automatically via server to:', res.message);
+    } else if (res.notConfigured) {
+      console.log('ℹ SMTP not yet configured in admin settings. Pre-filled 1-click Gmail fallback is ready.');
+    }
+  }).catch((e) => {
+    console.warn('Booking email dispatch background error:', e);
+  });
 
   return {
     customerEmail,

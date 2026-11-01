@@ -73,7 +73,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
 
             {/* Lead Prose */}
             <p className="text-base sm:text-lg text-neutral-600 leading-relaxed max-w-xl">
-              Studio foto mandiri berkonsep monokrom Korea di Senopati. Kendalikan remote shutter sendiri di ruang privat ber-AC, pantau pose lewat live monitor, dan dapatkan cetak photo strip premium serta semua file digital instan.
+              Studio foto mandiri berkonsep monokrom Korea. Kendalikan remote shutter sendiri di ruang privat ber-AC, pantau pose lewat live monitor, dan dapatkan cetak photo strip premium serta semua file digital instan.
             </p>
 
             {/* Action Buttons */}

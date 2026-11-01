@@ -1,5 +1,5 @@
 import { Booking } from '../types';
-import { formatIDR, formatDateIndo, saveBooking } from './storage';
+import { formatIDR, formatDateIndo, saveBooking, getStoredStudioConfig } from './storage';
 import { STUDIO_CONFIG } from '../data/studioData';
 import { saveBookingToCloud } from './firestoreService';
 import { clearStoredToken } from './googleAuth';
@@ -82,8 +82,11 @@ export async function createGoogleCalendarEvent(
   try {
     const { startISO, endISO } = getMakassarStartEndISO(booking.date, booking.timeSlot, durationMinutes);
 
+    const currentConfig = getStoredStudioConfig();
+    const studioAddress = currentConfig.address || '';
+
     const description = [
-      `📸 YAY PHOTO STUDIO - BOOKING SESI FOTO`,
+      `📸 ${currentConfig.name.toUpperCase()}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `• Kode Reservasi: #${booking.id}`,
       `• Layanan: ${booking.serviceName}`,
@@ -99,16 +102,15 @@ export async function createGoogleCalendarEvent(
       `• WhatsApp: ${booking.customer.whatsapp}`,
       `• Email: ${booking.customer.email}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `LOKASI STUDIO:`,
-      `${STUDIO_CONFIG.address}`,
-      `Instagram: ${STUDIO_CONFIG.instagram} | WhatsApp: +${STUDIO_CONFIG.whatsappNumber}`,
+      ...(studioAddress ? [`LOKASI STUDIO:`, studioAddress] : []),
+      `Instagram: ${currentConfig.instagram || STUDIO_CONFIG.instagram} | WhatsApp: +${currentConfig.whatsappNumber || STUDIO_CONFIG.whatsappNumber}`,
       `*Harap hadir 10 menit sebelum jam sesi dimulai.`
     ].join('\n');
 
     const eventPayload = {
       summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`,
       description,
-      location: STUDIO_CONFIG.address,
+      location: studioAddress || undefined,
       start: {
         dateTime: startISO,
         timeZone: 'Asia/Makassar',
@@ -210,18 +212,21 @@ export function generateGoogleCalendarWebUrl(booking: Booking, durationMinutes =
   const { googleWebDatesParam } = getMakassarStartEndISO(booking.date, booking.timeSlot, durationMinutes);
 
   const title = encodeURIComponent(`Yay Photo Studio: ${booking.serviceName} (#${booking.id})`);
+  const currentConfig = getStoredStudioConfig();
+  const studioAddress = currentConfig.address || '';
+
   const details = encodeURIComponent(
-    `Sesi Foto Yay Photo Studio\n` +
+    `Sesi Foto ${currentConfig.name}\n` +
     `Kode Booking: #${booking.id}\n` +
     `Layanan: ${booking.serviceName}\n` +
     `Backdrop: ${booking.backdrop}\n` +
     `Waktu: ${booking.timeSlot} WITA (GMT+8 Makassar)\n` +
     `Pemesan: ${booking.customer.name} (${booking.peopleCount} Orang)\n` +
     `Total: ${formatIDR(booking.totalPrice)}\n` +
-    `Pembayaran: Dilakukan saat di studio\n\n` +
-    `Alamat: ${STUDIO_CONFIG.address}`
+    `Pembayaran: Dilakukan saat di studio\n` +
+    (studioAddress ? `\nAlamat: ${studioAddress}` : '')
   );
-  const location = encodeURIComponent(STUDIO_CONFIG.address);
+  const location = encodeURIComponent(studioAddress);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${googleWebDatesParam}&details=${details}&location=${location}&ctz=Asia/Makassar`;
 }
@@ -285,6 +290,9 @@ export function generateICSContent(booking: Booking, durationMinutes = 30): stri
   const dtStart = `${cleanDate}T${pad(startHour)}${pad(startMin)}00`;
   const dtEnd = `${cleanDate}T${pad(endHour)}${pad(endMin)}00`;
 
+  const currentConfig = getStoredStudioConfig();
+  const studioAddress = currentConfig.address || '';
+
   const icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -297,8 +305,8 @@ export function generateICSContent(booking: Booking, durationMinutes = 30): stri
     `DTSTART;TZID=Asia/Makassar:${dtStart}`,
     `DTEND;TZID=Asia/Makassar:${dtEnd}`,
     `SUMMARY:Yay Photo Studio: ${booking.serviceName} (#${booking.id})`,
-    `DESCRIPTION:Sesi Foto Yay Photo Studio\\nKode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nBackdrop: ${booking.backdrop}\\nNama: ${booking.customer.name} (${booking.peopleCount} Orang)\\nTotal: ${formatIDR(booking.totalPrice)}\\nLokasi: ${STUDIO_CONFIG.address}`,
-    `LOCATION:${STUDIO_CONFIG.address}`,
+    `DESCRIPTION:Sesi Foto ${currentConfig.name}\\nKode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nBackdrop: ${booking.backdrop}\\nNama: ${booking.customer.name} (${booking.peopleCount} Orang)\\nTotal: ${formatIDR(booking.totalPrice)}${studioAddress ? `\\nLokasi: ${studioAddress}` : ''}`,
+    ...(studioAddress ? [`LOCATION:${studioAddress}`] : []),
     'STATUS:CONFIRMED',
     'END:VEVENT',
     'END:VCALENDAR',

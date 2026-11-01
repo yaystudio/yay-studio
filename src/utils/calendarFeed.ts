@@ -1,5 +1,6 @@
 import { Booking } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
+import { getStoredStudioConfig } from './storage';
 
 /**
  * Generates RFC 5545 compliant iCalendar (.ics) string for all active bookings
@@ -9,6 +10,8 @@ export function generateFullCalendarFeedICS(bookings: Booking[]): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   const now = new Date();
   const dtStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const currentConfig = getStoredStudioConfig();
+  const studioAddress = currentConfig.address || '';
 
   const validBookings = (bookings || []).filter(
     (b) => b && b.status !== 'cancelled' && b.date && b.timeSlot
@@ -27,9 +30,9 @@ export function generateFullCalendarFeedICS(bookings: Booking[]): string {
     const dtStart = `${cleanDate}T${pad(startHour)}${pad(startMin)}00`;
     const dtEnd = `${cleanDate}T${pad(endHour)}${pad(endMin)}00`;
 
-    const summary = `[Yay Studio] ${b.serviceName || 'Sesi Foto'} - ${b.customer?.name || 'Customer'}`;
+    const summary = `[${currentConfig.name}] ${b.serviceName || 'Sesi Foto'} - ${b.customer?.name || 'Customer'}`;
     const description = [
-      `📸 YAY PHOTO STUDIO MAKASSAR`,
+      `📸 ${currentConfig.name.toUpperCase()}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `• Kode Booking: #${b.id}`,
       `• Layanan: ${b.serviceName}`,
@@ -46,8 +49,8 @@ export function generateFullCalendarFeedICS(bookings: Booking[]): string {
       `• Email: ${b.customer?.email || '-'}`,
       `• Catatan: ${b.customer?.notes || '-'}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `Alamat: ${STUDIO_CONFIG.address}`,
-      `WhatsApp: +${STUDIO_CONFIG.whatsappNumber}`,
+      ...(studioAddress ? [`Alamat: ${studioAddress}`] : []),
+      `WhatsApp: +${currentConfig.whatsappNumber || STUDIO_CONFIG.whatsappNumber}`,
     ].join('\\n');
 
     return [
@@ -58,7 +61,7 @@ export function generateFullCalendarFeedICS(bookings: Booking[]): string {
       `DTEND;TZID=Asia/Makassar:${dtEnd}`,
       `SUMMARY:${summary}`,
       `DESCRIPTION:${description}`,
-      `LOCATION:${STUDIO_CONFIG.address}`,
+      ...(studioAddress ? [`LOCATION:${studioAddress}`] : []),
       'STATUS:CONFIRMED',
       'TRANSP:OPAQUE',
       'END:VEVENT',

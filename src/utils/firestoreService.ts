@@ -183,6 +183,22 @@ export function subscribeToStudioConfig(
         } else {
           const data = snapshot.data() as StudioConfig;
           const merged: StudioConfig = { ...STUDIO_CONFIG, ...data };
+          // If legacy preset address was stored, clear it so user can define custom address in Admin Panel
+          if (
+            merged.address &&
+            (merged.address.includes('Senopati') ||
+              merged.address.includes('Jakarta') ||
+              merged.address.includes('Pasar Segar') ||
+              merged.address.includes('Pengayoman'))
+          ) {
+            merged.address = '';
+            setDoc(configDocRef, cleanForFirestore(merged)).catch((e) => {
+              console.warn('Failed to clear legacy address in Firestore:', e);
+            });
+          }
+          if (!merged.adminEmail) {
+            merged.adminEmail = STUDIO_CONFIG.adminEmail;
+          }
           onConfigUpdate(merged);
           try {
             localStorage.setItem('yay_studio_config_v3', JSON.stringify(merged));

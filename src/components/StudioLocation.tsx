@@ -1,5 +1,6 @@
 import React from 'react';
 import { STUDIO_CONFIG } from '../data/studioData';
+import { getStoredStudioConfig } from '../utils/storage';
 import { MapPin, Clock, Mail, Phone, Instagram, Navigation, ShieldCheck } from 'lucide-react';
 
 interface StudioLocationProps {
@@ -8,6 +9,8 @@ interface StudioLocationProps {
 }
 
 export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, onOpenAdmin }) => {
+  const config = getStoredStudioConfig();
+
   return (
     <section id="lokasi" className="py-16 sm:py-24 bg-white border-b border-neutral-200 scroll-mt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -20,11 +23,11 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
             </div>
 
             <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-950 tracking-tight">
-              Kunjungi Studio Kami di Senopati
+              Lokasi Studio Kami
             </h2>
 
             <p className="text-base text-neutral-600 leading-relaxed">
-              Yay Photo Studio berlokasi strategis di kawasan Senopati, Jakarta Selatan. Dekat dengan berbagai kafe aesthetic, akses mudah, dan area parkir mobil/motor luas.
+              Yay Photo Studio menyediakan ruang foto mandiri dan portrait privat dengan fasilitas lengkap, ber-AC, dan peralatan pencahayaan profesional.
             </p>
 
             <div className="space-y-4 pt-2">
@@ -32,9 +35,8 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
                 <MapPin className="w-5 h-5 text-neutral-900 shrink-0 mt-0.5" />
                 <div>
                   <div className="text-xs font-semibold uppercase text-neutral-400">Alamat Lengkap</div>
-                  <div className="text-sm font-bold text-neutral-900 mt-0.5">{STUDIO_CONFIG.address}</div>
-                  <div className="text-xs text-neutral-500 mt-1">
-                    (Patokan: Sebelah Cafe Kopi Senopati, naik ke Lantai 2)
+                  <div className="text-sm font-bold text-neutral-900 mt-0.5">
+                    {config.address || 'Alamat dapat diatur melalui Admin Panel'}
                   </div>
                 </div>
               </div>
@@ -98,9 +100,9 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
                 <div className="relative z-10 flex items-center justify-between text-xs font-mono text-neutral-400">
                   <span className="flex items-center gap-1.5 text-white">
                     <Navigation className="w-3.5 h-3.5 text-red-500" />
-                    <span>SENOPATI, JAKARTA SELATAN</span>
+                    <span>{config.name.toUpperCase()}</span>
                   </span>
-                  <span>LAT -6.230 · LONG 106.812</span>
+                  <span>{config.address ? config.address.slice(0, 30) : 'LOKASI STUDIO'}</span>
                 </div>
 
                 {/* Central Studio Pin */}
@@ -110,26 +112,28 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
                   </div>
                   <div className="bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl border border-neutral-800">
                     <div className="text-sm font-bold text-white font-display">
-                      YAY PHOTO STUDIO
+                      {config.name.toUpperCase()}
                     </div>
-                    <div className="text-[11px] text-neutral-400">
-                      Lt. 2 Jl. Senopati No. 42
+                    <div className="text-[11px] text-neutral-400 max-w-[220px] truncate">
+                      {config.address || 'Atur alamat di Admin Panel'}
                     </div>
                   </div>
                 </div>
 
                 {/* Bottom Amenities */}
                 <div className="relative z-10 flex items-center justify-between text-[11px] text-neutral-400 border-t border-neutral-800/80 pt-3">
-                  <span>Valet & Parkir Tersedia</span>
-                  <span>10 Menit dari SCBD</span>
-                  <a
-                    href="https://maps.google.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-white underline hover:text-neutral-300"
-                  >
-                    Buka Google Maps
-                  </a>
+                  <span>Ruang Privat Ber-AC</span>
+                  <span>Self Photo & Portrait</span>
+                  {config.address ? (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(config.address)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-white underline hover:text-neutral-300"
+                    >
+                      Buka Google Maps
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>

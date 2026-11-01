@@ -122,7 +122,23 @@ export function getStoredStudioConfig(): StudioConfig {
       return STUDIO_CONFIG;
     }
     const parsed = JSON.parse(raw);
-    const merged = { ...STUDIO_CONFIG, ...parsed };
+    const merged: StudioConfig = { ...STUDIO_CONFIG, ...parsed };
+    // Clear legacy preset addresses so user has full control to set custom address from Admin Panel
+    if (
+      merged.address &&
+      (merged.address.includes('Senopati') ||
+        merged.address.includes('Jakarta') ||
+        merged.address.includes('Pasar Segar') ||
+        merged.address.includes('Pengayoman'))
+    ) {
+      merged.address = '';
+      try {
+        localStorage.setItem(STUDIO_CONFIG_KEY, JSON.stringify(merged));
+      } catch {}
+    }
+    if (!merged.adminEmail) {
+      merged.adminEmail = STUDIO_CONFIG.adminEmail;
+    }
     return merged;
   } catch (e) {
     console.error('Failed to load studio config', e);

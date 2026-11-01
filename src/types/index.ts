@@ -84,5 +84,12 @@ export interface StudioConfig {
   // Admin Notification Email Settings
   enableAdminNotification?: boolean;
   adminNotificationSubject?: string;
+  // SMTP / Server Email Settings (optional)
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpFrom?: string;
 }
 

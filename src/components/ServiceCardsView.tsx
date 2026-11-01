@@ -220,7 +220,7 @@ export const ServiceCardsView: React.FC<ServiceCardsViewProps> = ({
 
       {/* Discreet footer information */}
       <div className="mt-12 text-center text-xs text-neutral-500 space-y-1">
-        <div>{config.name} · {config.address}</div>
+        <div>{config.name}{config.address ? ` · ${config.address}` : ''}</div>
         <div className="font-mono text-[11px]">Buka {config.operatingHours}</div>
       </div>
     </div>

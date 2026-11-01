@@ -10,6 +10,7 @@ import {
   downloadCalendarICSFile,
 } from '../utils/googleCalendar';
 import { googleSignIn, getAccessToken } from '../utils/googleAuth';
+import { sendBookingEmailViaApi, formatAdminEmail } from '../utils/emailService';
 import {
   CheckCircle2,
   Printer,
@@ -22,6 +23,10 @@ import {
   Loader2,
   Check,
   Download,
+  MapPin,
+  Mail,
+  AlertCircle,
+  Send,
 } from 'lucide-react';
 
 interface BookingSuccessModalProps {
@@ -42,6 +47,8 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
   const [eventLink, setEventLink] = useState<string>('');
   const [syncError, setSyncError] = useState<string>('');
   const [autoSynced, setAutoSynced] = useState<boolean>(false);
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'notConfigured' | 'error'>('idle');
+  const [emailMsg, setEmailMsg] = useState<string>('');
   const studioConfig = getStoredStudioConfig();
 
   useEffect(() => {
@@ -86,11 +93,33 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
           }
         });
       }
+      // Trigger automatic server email dispatch
+      setEmailStatus('sending');
+      sendBookingEmailViaApi(booking, studioConfig)
+        .then((res) => {
+          if (res.delivered) {
+            setEmailStatus('sent');
+            setEmailMsg(res.message || 'Email berhasil dikirim');
+          } else if (res.notConfigured) {
+            setEmailStatus('notConfigured');
+            setEmailMsg(res.message || 'SMTP belum dikonfigurasi');
+          } else {
+            setEmailStatus('error');
+            setEmailMsg(res.error || 'Gagal mengirim email');
+          }
+        })
+        .catch((err) => {
+          setEmailStatus('error');
+          setEmailMsg(err.message || 'Koneksi server gagal');
+        });
+
       setSyncError('');
     }
   }, [isOpen, booking]);
 
   if (!isOpen || !booking) return null;
+
+  const adminEmailFormatted = formatAdminEmail(booking, studioConfig);
 
   const handlePrintTicket = () => {
     window.print();
@@ -108,8 +137,9 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
         `• Backdrop: ${booking.backdrop}\n` +
         `• Jumlah Orang: ${booking.peopleCount} Orang\n` +
         `• Total Biaya: ${formatIDR(booking.totalPrice)}\n` +
+        (studioConfig.address ? `• Lokasi Studio: ${studioConfig.address}\n` : '') +
         `• Pembayaran: Dilakukan saat di studio\n\n` +
-        `📅 Link Google Calendar (Ketuk untuk langsung simpan ke kalender HP studio):\n${googleWebUrl}\n\n` +
+        `📅 Link Google Calendar:\n${googleWebUrl}\n\n` +
         `Terima kasih!`
     );
     const url = `https://wa.me/${STUDIO_CONFIG.whatsappNumber}?text=${message}`;
@@ -181,16 +211,50 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
           </div>
 
           {/* Dual Email Delivery Notification */}
-          <div className="mt-4 p-3 bg-neutral-900/90 rounded-xl border border-neutral-800 text-[11px] sm:text-xs text-neutral-300 space-y-1 text-left max-w-md mx-auto">
+          <div className="mt-4 p-3 bg-neutral-900/90 rounded-xl border border-neutral-800 text-[11px] sm:text-xs text-neutral-300 space-y-2 text-left max-w-md mx-auto">
             <div className="flex items-center gap-1.5 text-neutral-200">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
               <span>Email konfirmasi dikirim ke: <strong>{booking.customer.email}</strong></span>
             </div>
-            <div className="flex items-center gap-1.5 text-neutral-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>Notifikasi masuk ke admin: <strong>{studioConfig.adminEmail || STUDIO_CONFIG.adminEmail}</strong></span>
+            <div className="flex items-center justify-between gap-2 text-neutral-200">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    emailStatus === 'sent'
+                      ? 'bg-emerald-400'
+                      : emailStatus === 'sending'
+                      ? 'bg-amber-400 animate-pulse'
+                      : 'bg-blue-400'
+                  }`}
+                />
+                <span className="truncate">
+                  Notifikasi admin: <strong>{studioConfig.adminEmail || STUDIO_CONFIG.adminEmail}</strong>
+                </span>
+              </div>
+              {emailStatus === 'sent' && (
+                <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 rounded font-mono shrink-0">
+                  Terkirim Otomatis
+                </span>
+              )}
             </div>
 
+            {emailStatus !== 'sent' && (
+              <div className="pt-2 border-t border-neutral-800 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-neutral-400">
+                  Kirim notifikasi langsung ke admin:
+                </span>
+                <a
+                  href={adminEmailFormatted.gmailComposeUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 bg-white text-neutral-950 hover:bg-neutral-200 px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-colors shrink-0"
+                >
+                  <Send className="w-3 h-3 text-blue-600" />
+                  <span>Kirim via Gmail</span>
+                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                </a>
+              </div>
+            )}
           </div>
         </div>
 
@@ -245,6 +309,15 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
                 <CreditCard className="w-3.5 h-3.5 text-neutral-900" />
                 <span className="font-medium">Pembayaran dapat dilakukan saat di studio</span>
               </div>
+              {studioConfig.address && (
+                <div className="col-span-2 pt-2 border-t border-neutral-100 flex items-start gap-1.5 text-neutral-700 text-[11px]">
+                  <MapPin className="w-3.5 h-3.5 text-neutral-900 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-neutral-900">Lokasi Studio: </span>
+                    <span>{studioConfig.address}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Barcode Graphic for Photostudio Vibe */}

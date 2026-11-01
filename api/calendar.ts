@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json' with { type: 'json' };
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -17,7 +17,14 @@ export default async function handler(req: Request, res: Response) {
     const now = new Date();
     const dtStamp = now.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     const pad = (n: number) => String(n).padStart(2, '0');
-    const address = 'Jl. Pengayoman, Ruko Pasar Segar Blok RA No. 12, Makassar, Sulawesi Selatan';
+
+    let address = '';
+    try {
+      const configDoc = await getDoc(doc(db, 'config', 'studio'));
+      if (configDoc.exists()) {
+        address = configDoc.data()?.address || '';
+      }
+    } catch {}
 
     const events = bookings
       .filter((b) => b && b.status !== 'cancelled' && b.date && b.timeSlot)
