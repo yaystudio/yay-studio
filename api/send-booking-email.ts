@@ -150,17 +150,19 @@ export default async function handler(req: Request, res: Response) {
       'END:VCALENDAR',
     ].join('\r\n');
 
-    // Send to Admin with calendar invite
+    // Send to Admin notification email without auto-RSVP REQUEST to prevent duplicate events in Google Calendar
     const sendAdminPromise = transporter.sendMail({
       from: fromAddress,
       to: adminEmail,
       subject: adminSubject,
       html: adminHtml,
-      icalEvent: {
-        filename: `jadwal-${booking.id}.ics`,
-        method: 'REQUEST',
-        content: icsBookingEvent,
-      },
+      attachments: [
+        {
+          filename: `jadwal-${booking.id}.ics`,
+          content: icsBookingEvent,
+          contentType: 'text/calendar; charset=utf-8',
+        },
+      ],
     });
 
     // Send single confirmation to Customer without separate RSVP invitation so customer receives ONLY 1 email

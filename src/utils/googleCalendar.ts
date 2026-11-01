@@ -74,6 +74,9 @@ export function getMakassarStartEndISO(dateStr: string, timeSlot: string, durati
   return { startISO, endISO, googleWebDatesParam };
 }
 
+// In-flight sync tracker to prevent duplicate concurrent API calls
+const inFlightCalendarSyncs = new Set<string>();
+
 /**
  * Creates an event on the user's primary Google Calendar via Google Calendar API v3
  */
@@ -82,6 +85,28 @@ export async function createGoogleCalendarEvent(
   accessToken: string,
   durationMinutes = 30
 ): Promise<{ success: boolean; eventId?: string; htmlLink?: string; error?: string }> {
+  if (!booking?.id) {
+    return { success: false, error: 'ID booking tidak valid' };
+  }
+
+  // 1. Prevent concurrent duplicate calls for the same booking
+  if (inFlightCalendarSyncs.has(booking.id)) {
+    return { success: true };
+  }
+
+  // 2. Prevent duplicate creation if booking was already synced
+  const existingRecords = getSyncedCalendarRecords();
+  if (existingRecords[booking.id]?.calendarEventId || booking.calendarEventId) {
+    const existingId = existingRecords[booking.id]?.calendarEventId || booking.calendarEventId;
+    return {
+      success: true,
+      eventId: existingId,
+      htmlLink: existingRecords[booking.id]?.htmlLink,
+    };
+  }
+
+  inFlightCalendarSyncs.add(booking.id);
+
   try {
     const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
     const { startISO, endISO } = getMakassarStartEndISO(booking.date, booking.timeSlot, effectiveDuration);
@@ -112,6 +137,7 @@ export async function createGoogleCalendarEvent(
     ].join('\n');
 
     const eventPayload = {
+      iCalUID: `yay-booking-${booking.id}@yayphotostudio.com`,
       summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`,
       description,
       location: studioAddress || undefined,
@@ -139,6 +165,10 @@ export async function createGoogleCalendarEvent(
     });
 
     if (!response.ok) {
+      if (response.status === 409) {
+        // Event with this unique ID already exists in Google Calendar
+        return { success: true };
+      }
       if (response.status === 401) {
         clearStoredToken();
         throw new Error('Sesi Google Calendar berakhir (401 Unauthorized). Silakan klik untuk login ulang.');
@@ -178,6 +208,8 @@ export async function createGoogleCalendarEvent(
       success: false,
       error: err.message || 'Terjadi kesalahan saat menghubungkan ke Google Calendar.',
     };
+  } finally {
+    inFlightCalendarSyncs.delete(booking.id);
   }
 }
 
