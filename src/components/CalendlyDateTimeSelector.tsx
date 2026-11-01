@@ -216,7 +216,7 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
             <span className="text-base" role="img" aria-label="Globe">🌐</span>
             <div className="leading-tight">
               <span className="font-semibold text-neutral-900 block">Zona Waktu: WITA (GMT+8)</span>
-              <span className="text-[11px] text-neutral-500">Waktu Indonesia Tengah · Makassar</span>
+              <span className="text-[11px] text-neutral-500">Waktu Indonesia Tengah (GMT+8)</span>
             </div>
           </div>
         </div>

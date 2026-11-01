@@ -2,11 +2,11 @@ import { Service, StudioConfig, Booking, BackdropOption } from '../types';
 
 export const STUDIO_CONFIG: StudioConfig = {
   name: "Yay Photo Studio",
-  tagline: "Korean Minimalist Self-Photo & Portrait Studio",
+  tagline: "Minimalist Self-Photo & Portrait Studio",
   adminEmail: "yayphotostudio@gmail.com",
   whatsappNumber: "6281234567890",
   address: "",
-  operatingHours: "Setiap Hari · 10:00 - 21:30 WITA (GMT+8 · Makassar)",
+  operatingHours: "Setiap Hari · 10:00 - 21:30 WITA (GMT+8)",
   instagram: "",
   paymentNote: "Pembayaran dapat dilakukan saat di studio",
   customerEmailSubject: "Konfirmasi Booking {studioName} - #{bookingId}",
@@ -19,7 +19,7 @@ export const STUDIO_CONFIG: StudioConfig = {
 };
 
 
-// Default high-aesthetic Korean studio SVG preview illustrations (Portrait 3:4 aspect ratio - 600x800)
+// Default high-aesthetic studio SVG preview illustrations (Portrait 3:4 aspect ratio - 600x800)
 const DEFAULT_SELF_PHOTO_IMG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800"><rect width="600" height="800" fill="%23171717"/><rect x="30" y="30" width="540" height="740" rx="24" fill="%23242424" stroke="%23383838" stroke-width="2"/><circle cx="210" cy="300" r="70" fill="%23e5e5e5"/><circle cx="390" cy="300" r="70" fill="%23d4d4d4"/><path d="M100 520 C100 410 320 410 320 520 Z" fill="%23e5e5e5"/><path d="M280 520 C280 410 500 410 500 520 Z" fill="%23d4d4d4"/><rect x="180" y="520" width="240" height="130" rx="16" fill="%231a1a1a" stroke="%23333333"/><circle cx="300" cy="565" r="16" fill="%23171717" stroke="%23ffffff" stroke-width="3"/><path d="M300 581 L300 625" stroke="%23ffffff" stroke-width="2" stroke-dasharray="4,4"/><rect x="50" y="60" width="120" height="30" rx="8" fill="%230a0a0a"/><text x="110" y="80" fill="%23ffffff" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">PHOTO STRIP 3:4</text><rect x="420" y="60" width="130" height="30" rx="8" fill="%230a0a0a"/><text x="485" y="80" fill="%2310b981" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">WIRELESS CLICKER</text><text x="300" y="685" fill="%23ffffff" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle" letter-spacing="2">SELF PHOTO REGULER</text><text x="300" y="715" fill="%23a3a3a3" font-family="sans-serif" font-size="13" text-anchor="middle">Ruang Mandiri · Remote Bebas · All Soft Files</text></svg>`;
 
 const DEFAULT_PROFILE_PHOTO_IMG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800"><rect width="600" height="800" fill="%2318181b"/><rect x="30" y="30" width="540" height="740" rx="24" fill="%2327272a" stroke="%233f3f46" stroke-width="2"/><circle cx="300" cy="270" r="95" fill="%23f4f4f5"/><path d="M150 530 C150 400 450 400 450 530 Z" fill="%23f4f4f5"/><path d="M240 530 L300 420 L360 530 Z" fill="%2318181b"/><rect x="288" y="420" width="24" height="110" fill="%2327272a"/><circle cx="480" cy="160" r="45" fill="%23ffffff" opacity="0.12"/><circle cx="480" cy="160" r="24" fill="%23ffffff" opacity="0.25"/><rect x="50" y="60" width="130" height="30" rx="8" fill="%2309090b"/><text x="115" y="80" fill="%23ffffff" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">PORTRAIT 3:4</text><rect x="420" y="60" width="130" height="30" rx="8" fill="%2309090b"/><text x="485" y="80" fill="%2338bdf8" font-family="monospace" font-size="11" font-weight="bold" text-anchor="middle">BEAUTY DISH</text><text x="300" y="685" fill="%23ffffff" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle" letter-spacing="2">PROFILE SELF PHOTO</text><text x="300" y="715" fill="%23a1a1aa" font-family="sans-serif" font-size="13" text-anchor="middle">CV · LinkedIn · Cetak 4R · Retouch Eksklusif</text></svg>`;
@@ -35,7 +35,7 @@ export const BACKDROP_OPTIONS: BackdropOption[] = [
   },
   {
     id: "warm-grey",
-    name: "Korean Neutral Grey",
+    name: "Neutral Grey",
     colorHex: "#D1D5DB",
     borderHex: "#9CA3AF",
     desc: "Estetik dan bernuansa modern",
@@ -48,7 +48,7 @@ export const BACKDROP_OPTIONS: BackdropOption[] = [
     desc: "Monokrom kontras & dramatis",
   },
   {
-    id: "korean-beige",
+    id: "sand-beige",
     name: "Soft Sand Beige",
     colorHex: "#E7DFD5",
     borderHex: "#D4C7B8",
@@ -87,9 +87,9 @@ export const SERVICES: Service[] = [
     },
     backdrops: [
       { id: "pure-white", name: "Clean Studio White", colorHex: "#F8F9FA", borderHex: "#E2E8F0", desc: "Klasik, terang, dan bersih" },
-      { id: "warm-grey", name: "Korean Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
+      { id: "warm-grey", name: "Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
       { id: "jet-black", name: "Obsidian Jet Black", colorHex: "#18181B", borderHex: "#27272A", desc: "Monokrom kontras & dramatis" },
-      { id: "korean-beige", name: "Soft Sand Beige", colorHex: "#E7DFD5", borderHex: "#D4C7B8", desc: "Hangat, elegan, dan estetik" },
+      { id: "sand-beige", name: "Soft Sand Beige", colorHex: "#E7DFD5", borderHex: "#D4C7B8", desc: "Hangat, elegan, dan estetik" },
     ],
     perks: [
       "Kapasitas awal 2 orang (bisa tambah orang)",
@@ -128,7 +128,7 @@ export const SERVICES: Service[] = [
     },
     backdrops: [
       { id: "pure-white", name: "Clean Studio White", colorHex: "#F8F9FA", borderHex: "#E2E8F0", desc: "Klasik, terang, dan bersih" },
-      { id: "warm-grey", name: "Korean Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
+      { id: "warm-grey", name: "Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
       { id: "jet-black", name: "Obsidian Jet Black", colorHex: "#18181B", borderHex: "#27272A", desc: "Monokrom kontras & dramatis" },
     ],
     perks: [
@@ -173,8 +173,8 @@ export const SERVICES: Service[] = [
     },
     backdrops: [
       { id: "pure-white", name: "Clean Studio White", colorHex: "#F8F9FA", borderHex: "#E2E8F0", desc: "Klasik, terang, dan bersih" },
-      { id: "warm-grey", name: "Korean Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
-      { id: "korean-beige", name: "Soft Sand Beige", colorHex: "#E7DFD5", borderHex: "#D4C7B8", desc: "Hangat, elegan, dan estetik" },
+      { id: "warm-grey", name: "Neutral Grey", colorHex: "#D1D5DB", borderHex: "#9CA3AF", desc: "Estetik dan bernuansa modern" },
+      { id: "sand-beige", name: "Soft Sand Beige", colorHex: "#E7DFD5", borderHex: "#D4C7B8", desc: "Hangat, elegan, dan estetik" },
     ],
     perks: [
       "Kapasitas s/d 5 orang tanpa biaya tambahan",
@@ -216,7 +216,7 @@ export const INITIAL_BOOKINGS: Booking[] = [
     serviceName: "Self Photo Reguler",
     date: new Date().toISOString().split("T")[0],
     timeSlot: "18:30",
-    backdrop: "Korean Neutral Grey",
+    backdrop: "Neutral Grey",
     peopleCount: 2,
     customer: {
       name: "Clara Amanda",

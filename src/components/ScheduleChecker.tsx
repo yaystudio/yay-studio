@@ -69,7 +69,7 @@ export const ScheduleChecker: React.FC<ScheduleCheckerProps> = ({ onSelectSlotTo
         <div className="bg-white rounded-2xl p-6 sm:p-8 border border-neutral-200 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-100">
             <div>
-              <div className="text-xs text-neutral-400 font-mono">TANGGAL DIPILIH · WITA (GMT+8 · MAKASSAR)</div>
+              <div className="text-xs text-neutral-400 font-mono">TANGGAL DIPILIH · WITA (GMT+8)</div>
               <div className="text-lg font-bold text-neutral-950">
                 {formatDateIndo(selectedDate)}
               </div>

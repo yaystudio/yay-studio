@@ -26,7 +26,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenAdmin }) =>
               </span>
             </div>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-sm leading-relaxed">
-              Studio foto mandiri & potret bergaya monokrom minimalis Korea. Abadikan momen terbaik Anda bersama orang tersayang tanpa rasa canggung di ruang studio privat berfasilitas lengkap.
+              Studio foto mandiri & potret bergaya monokrom modern minimalis. Abadikan momen terbaik Anda bersama orang tersayang tanpa rasa canggung di ruang studio privat berfasilitas lengkap.
             </p>
             <div className="text-xs text-neutral-500 font-mono">
               {config.address ? `${config.address.toUpperCase()} · ` : ''}EST. 2024

@@ -43,12 +43,12 @@ export default async function handler(req: Request, res: Response) {
 
         const summary = `[Yay Studio] ${b.serviceName || 'Sesi Foto'} - ${b.customer?.name || 'Customer'}`;
         const description = [
-          `📸 YAY PHOTO STUDIO MAKASSAR`,
+          `📸 YAY PHOTO STUDIO`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `• Kode Booking: #${b.id}`,
           `• Layanan: ${b.serviceName}`,
           `• Tanggal: ${b.date}`,
-          `• Jam: ${b.timeSlot} WITA (GMT+8 Makassar)`,
+          `• Jam: ${b.timeSlot} WITA (GMT+8)`,
           `• Warna Backdrop: ${b.backdrop || '-'}`,
           `• Jumlah Orang: ${b.peopleCount || 1} Orang`,
           `• Total: Rp ${Number(b.totalPrice || 0).toLocaleString('id-ID')}`,
@@ -81,12 +81,12 @@ export default async function handler(req: Request, res: Response) {
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Yay Photo Studio//Makassar//ID',
+      'PRODID:-//Yay Photo Studio//ID',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
       'X-WR-CALNAME:Yay Photo Studio - Jadwal Booking',
       'X-WR-TIMEZONE:Asia/Makassar',
-      'X-WR-CALDESC:Jadwal Reservasi Realtime Yay Photo Studio Makassar (WITA)',
+      'X-WR-CALDESC:Jadwal Reservasi Realtime Yay Photo Studio (WITA)',
       'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
       'X-PUBLISHED-TTL:PT15M',
       ...events,

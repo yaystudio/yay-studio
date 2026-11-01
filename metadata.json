@@ -1,6 +1,6 @@
 {
   "name": "Yay Photo Studio - Booking & Studio Management",
-  "description": "Platform booking resmi Yay Photo Studio bergaya monokrom minimalis Korea untuk Self Photo Reguler, Profile Self Photo, dan Photo by Photographer.",
+  "description": "Platform booking resmi Yay Photo Studio bergaya monokrom modern minimalis untuk Self Photo Reguler, Profile Self Photo, dan Photo by Photographer.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

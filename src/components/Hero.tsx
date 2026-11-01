@@ -47,7 +47,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
 
   return (
     <section className="relative overflow-hidden bg-white border-b border-neutral-200">
-      {/* Subtle Korean Grid Background Texture */}
+      {/* Subtle Grid Background Texture */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#f0f0f0_1px,transparent_1px),linear-gradient(to_bottom,#f0f0f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-60 pointer-events-none" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-16 lg:pt-20 lg:pb-24">
@@ -57,11 +57,11 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
           <div className="lg:col-span-7 space-y-6">
             {/* Zero-Pill Clean Unboxed Metadata with Typographic Separator */}
             <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-              <span>Korean Minimalist Photo Studio</span>
+              <span>Minimalist Photo Studio</span>
               <span aria-hidden="true" className="text-neutral-400">·</span>
               <span>Self-Photo & Portrait</span>
               <span aria-hidden="true" className="text-neutral-400">·</span>
-              <span className="text-neutral-900 font-bold">Jakarta Selatan</span>
+              <span className="text-neutral-900 font-bold">Ruang Privat & Modern</span>
             </div>
 
             {/* Hero Headline with text-wrap: balance and refined weight */}
@@ -73,7 +73,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
 
             {/* Lead Prose */}
             <p className="text-base sm:text-lg text-neutral-600 leading-relaxed max-w-xl">
-              Studio foto mandiri berkonsep monokrom Korea. Kendalikan remote shutter sendiri di ruang privat ber-AC, pantau pose lewat live monitor, dan dapatkan cetak photo strip premium serta semua file digital instan.
+              Studio foto mandiri berkonsep monokrom modern. Kendalikan remote shutter sendiri di ruang privat ber-AC, pantau pose lewat live monitor, dan dapatkan cetak photo strip premium serta semua file digital instan.
             </p>
 
             {/* Action Buttons */}
@@ -112,7 +112,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
             </div>
           </div>
 
-          {/* Right Column: Korean Studio Viewfinder & Interactive Shutter Simulation */}
+          {/* Right Column: Studio Viewfinder & Interactive Shutter Simulation */}
           <div className="lg:col-span-5">
             <div className="relative mx-auto max-w-md lg:max-w-none bg-neutral-950 text-white rounded-2xl p-4 sm:p-5 shadow-2xl border border-neutral-800">
               {/* Flash Overlay effect on shutter click */}

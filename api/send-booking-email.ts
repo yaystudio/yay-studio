@@ -83,7 +83,7 @@ export default async function handler(req: Request, res: Response) {
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e5e5; border-radius: 16px; overflow: hidden; color: #171717;">
         <div style="background: #0a0a0a; color: #ffffff; padding: 24px; text-align: center;">
-          <h1 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">${studioName.toUpperCase()} MAKASSAR</h1>
+          <h1 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">${studioName.toUpperCase()}</h1>
           <p style="margin: 0; font-size: 13px; color: #a3a3a3; font-family: monospace;">NOTIFIKASI RESERVASI BARU · WITA (GMT+8)</p>
         </div>
         <div style="padding: 28px 24px;">
@@ -100,7 +100,7 @@ export default async function handler(req: Request, res: Response) {
             ${booking.customer?.notes ? `<tr><td style="padding: 8px 0; color: #737373;">Catatan:</td><td style="padding: 8px 0; font-style: italic;">${booking.customer.notes}</td></tr>` : ''}
             <tr style="border-top: 1px dashed #e5e5e5;"><td style="padding: 12px 0 8px 0; color: #737373;">Layanan:</td><td style="padding: 12px 0 8px 0; font-weight: 700;">${booking.serviceName}</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Tanggal Sesi:</td><td style="padding: 8px 0; font-weight: 700;">${booking.date}</td></tr>
-            <tr><td style="padding: 8px 0; color: #737373;">Jam Sesi:</td><td style="padding: 8px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA (Makassar)</td></tr>
+            <tr><td style="padding: 8px 0; color: #737373;">Jam Sesi:</td><td style="padding: 8px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Warna Backdrop:</td><td style="padding: 8px 0;">${booking.backdrop || '-'}</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Jumlah Orang:</td><td style="padding: 8px 0;">${booking.peopleCount} Orang</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Total Biaya:</td><td style="padding: 8px 0; font-weight: 800; font-size: 15px; color: #16a34a;">Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}</td></tr>
@@ -116,11 +116,12 @@ export default async function handler(req: Request, res: Response) {
       </div>
     `;
 
-    // Generate iCalendar format for automatic Google Calendar event creation
+    // Generate iCalendar format for admin's calendar entry only
+    const bookingDuration = Number(booking.durationMinutes) || 30;
     const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
     const startH = parseInt(hStr || '10', 10);
     const startM = parseInt(mStr || '00', 10);
-    const endMinutes = startH * 60 + startM + 30;
+    const endMinutes = startH * 60 + startM + bookingDuration;
     const endH = Math.floor(endMinutes / 60);
     const endM = endMinutes % 60;
     const cleanD = (booking.date || '').replace(/-/g, '');
@@ -131,7 +132,7 @@ export default async function handler(req: Request, res: Response) {
     const icsBookingEvent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Yay Photo Studio//Makassar//ID',
+      'PRODID:-//Yay Photo Studio//ID',
       'CALSCALE:GREGORIAN',
       'METHOD:REQUEST',
       'BEGIN:VEVENT',
@@ -140,12 +141,11 @@ export default async function handler(req: Request, res: Response) {
       `DTSTART;TZID=Asia/Makassar:${dtStart}`,
       `DTEND;TZID=Asia/Makassar:${dtEnd}`,
       `SUMMARY:[Yay Studio] ${booking.serviceName} - ${booking.customer?.name}`,
-      `DESCRIPTION:Kode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nTanggal: ${booking.date}\\nJam: ${booking.timeSlot} WITA (Makassar)\\nPelanggan: ${booking.customer?.name} (${booking.customer?.whatsapp})\\nTotal: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}${address ? `\\nLokasi: ${address}` : ''}`,
+      `DESCRIPTION:Kode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nTanggal: ${booking.date}\\nJam: ${booking.timeSlot} WITA\\nPelanggan: ${booking.customer?.name} (${booking.customer?.whatsapp})\\nTotal: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}${address ? `\\nLokasi: ${address}` : ''}`,
       ...(address ? [`LOCATION:${address}`] : []),
       'STATUS:CONFIRMED',
       `ORGANIZER;CN="${studioName}":mailto:${senderUser}`,
       `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Admin Yay Studio":mailto:${adminEmail}`,
-      ...(booking.customer?.email ? [`ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="${booking.customer.name}":mailto:${booking.customer.email}`] : []),
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
@@ -163,15 +163,18 @@ export default async function handler(req: Request, res: Response) {
       },
     });
 
-    // Also send confirmation to Customer if customer email exists
+    // Send single confirmation to Customer without separate RSVP invitation so customer receives ONLY 1 email
     let sendCustomerPromise: Promise<any> = Promise.resolve(null);
     if (booking.customer?.email) {
+      const gcalDates = `${cleanD}T${String(startH).padStart(2, '0')}${String(startM).padStart(2, '0')}00/${cleanD}T${String(endH).padStart(2, '0')}${String(endM).padStart(2, '0')}00`;
+      const gcalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`${studioName}: ${booking.serviceName}`)}&dates=${gcalDates}&details=${encodeURIComponent(`Kode Booking: #${booking.id}\nLayanan: ${booking.serviceName}\nTotal: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}`)}&location=${encodeURIComponent(address)}&ctz=Asia/Makassar`;
+
       const customerSubject = `Konfirmasi Reservasi ${studioName} - #${booking.id}`;
       const customerHtml = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e5e5; border-radius: 16px; overflow: hidden; color: #171717;">
           <div style="background: #0a0a0a; color: #ffffff; padding: 24px; text-align: center;">
             <h1 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">${studioName.toUpperCase()}</h1>
-            <p style="margin: 0; font-size: 13px; color: #a3a3a3;">Korean Minimalist Self-Photo & Portrait Studio</p>
+            <p style="margin: 0; font-size: 13px; color: #a3a3a3;">Minimalist Self-Photo & Portrait Studio</p>
           </div>
           <div style="padding: 28px 24px;">
             <p style="font-size: 16px; font-weight: 700; margin: 0 0 8px 0;">Halo ${booking.customer.name},</p>
@@ -184,7 +187,7 @@ export default async function handler(req: Request, res: Response) {
                 <tr><td style="padding: 6px 0; color: #737373;">Kode Booking:</td><td style="padding: 6px 0; font-weight: 700; font-family: monospace;">#${booking.id}</td></tr>
                 <tr><td style="padding: 6px 0; color: #737373;">Paket Layanan:</td><td style="padding: 6px 0; font-weight: 700;">${booking.serviceName}</td></tr>
                 <tr><td style="padding: 6px 0; color: #737373;">Tanggal:</td><td style="padding: 6px 0; font-weight: 700;">${booking.date}</td></tr>
-                <tr><td style="padding: 6px 0; color: #737373;">Waktu / Jam:</td><td style="padding: 6px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA (Makassar)</td></tr>
+                <tr><td style="padding: 6px 0; color: #737373;">Waktu / Jam:</td><td style="padding: 6px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA</td></tr>
                 <tr><td style="padding: 6px 0; color: #737373;">Backdrop:</td><td style="padding: 6px 0;">${booking.backdrop || '-'}</td></tr>
                 <tr><td style="padding: 6px 0; color: #737373;">Jumlah Orang:</td><td style="padding: 6px 0;">${booking.peopleCount} Orang</td></tr>
                 <tr><td style="padding: 6px 0; color: #737373;">Total Biaya:</td><td style="padding: 6px 0; font-weight: 800; font-size: 14px; color: #16a34a;">Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}</td></tr>
@@ -201,8 +204,14 @@ export default async function handler(req: Request, res: Response) {
               </ol>
             </div>
 
+            <div style="text-align: center; margin-bottom: 24px;">
+              <a href="${gcalUrl}" target="_blank" style="display: inline-block; padding: 10px 18px; background: #171717; color: #ffffff; text-decoration: none; font-size: 12px; font-weight: 600; border-radius: 8px;">
+                📅 Tambahkan ke Google Calendar Anda
+              </a>
+            </div>
+
             <div style="padding-top: 18px; border-top: 1px solid #f0f0f0; font-size: 12px; color: #737373; line-height: 1.5;">
-              <p style="margin: 0 0 6px 0;"><strong>Alamat Studio:</strong> ${address}</p>
+              ${address ? `<p style="margin: 0 0 6px 0;"><strong>Alamat Studio:</strong> ${address}</p>` : ''}
               <p style="margin: 0;">Sampai jumpa di studio! Jika ada pertanyaan, hubungi WhatsApp studio kami.</p>
             </div>
           </div>
@@ -214,11 +223,6 @@ export default async function handler(req: Request, res: Response) {
         to: booking.customer.email,
         subject: customerSubject,
         html: customerHtml,
-        icalEvent: {
-          filename: `jadwal-${booking.id}.ics`,
-          method: 'REQUEST',
-          content: icsBookingEvent,
-        },
       }).catch((e) => {
         console.warn('Customer confirmation email send warning in api/send-booking-email:', e);
         return null;

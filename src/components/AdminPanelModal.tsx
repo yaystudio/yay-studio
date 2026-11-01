@@ -1557,7 +1557,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             </span>
                           </div>
                           <div>
-                            <span className="text-neutral-400 block text-[10px]">WAKTU (WITA · MAKASSAR)</span>
+                            <span className="text-neutral-400 block text-[10px]">WAKTU (WITA)</span>
                             <span className="font-mono font-medium text-neutral-800">
                               {b.timeSlot} WITA
                             </span>
@@ -1663,7 +1663,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </div>
             )}
 
-            {/* TAB: GOOGLE CALENDAR INTEGRATION (WITA - GMT+8 MAKASSAR) */}
+            {/* TAB: GOOGLE CALENDAR INTEGRATION (WITA - GMT+8) */}
             {activeTab === 'calendar' && (
               <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
                 {/* 100% PERMANENT CALENDAR FEED (SELAMANYA AKTIF & GRATIS) */}
@@ -1827,7 +1827,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           </span>
                         </div>
                         <p className="text-xs text-neutral-400 mt-0.5">
-                          Sinkronkan jadwal sesi foto secara otomatis ke Google Calendar dengan format 24 jam zona waktu Makassar.
+                          Sinkronkan jadwal sesi foto secara otomatis ke Google Calendar dengan format 24 jam zona waktu WITA (GMT+8).
                         </p>
                       </div>
                     </div>
@@ -2229,7 +2229,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       Daftar Reservasi & Status Sinkronisasi Google Calendar:
                     </span>
                     <span className="text-[11px] text-neutral-500 font-mono">
-                      Zona: Asia/Makassar (+08:00)
+                      Zona: WITA (GMT+8)
                     </span>
                   </div>
 

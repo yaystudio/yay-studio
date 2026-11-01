@@ -271,7 +271,7 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
                 <span className="font-semibold text-neutral-900">{formatDateIndo(booking.date)}</span>
               </div>
               <div>
-                <span className="text-neutral-400 block text-[10px] uppercase font-mono">WAKTU (24 JAM · MAKASSAR)</span>
+                <span className="text-neutral-400 block text-[10px] uppercase font-mono">WAKTU (24 JAM · WITA)</span>
                 <span className="font-mono font-bold text-neutral-950 text-sm">{booking.timeSlot} WITA</span>
               </div>
               <div>

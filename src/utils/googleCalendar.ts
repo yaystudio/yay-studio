@@ -92,7 +92,7 @@ export async function createGoogleCalendarEvent(
       `• Kode Reservasi: #${booking.id}`,
       `• Layanan: ${booking.serviceName}`,
       `• Tanggal Sesi: ${formatDateIndo(booking.date)}`,
-      `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8 · Makassar)`,
+      `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8)`,
       `• Warna Backdrop: ${booking.backdrop}`,
       `• Jumlah Orang: ${booking.peopleCount} Orang`,
       `• Total Biaya: ${formatIDR(booking.totalPrice)}`,
@@ -222,7 +222,7 @@ export function generateGoogleCalendarWebUrl(booking: Booking, durationMinutes =
     `Kode Booking: #${booking.id}\n` +
     `Layanan: ${booking.serviceName}\n` +
     `Backdrop: ${booking.backdrop}\n` +
-    `Waktu: ${booking.timeSlot} WITA (GMT+8 Makassar)\n` +
+    `Waktu: ${booking.timeSlot} WITA (GMT+8)\n` +
     `Pemesan: ${booking.customer.name} (${booking.peopleCount} Orang)\n` +
     `Total: ${formatIDR(booking.totalPrice)}\n` +
     `Pembayaran: Dilakukan saat di studio\n` +
@@ -299,7 +299,7 @@ export function generateICSContent(booking: Booking, durationMinutes = 30): stri
   const icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Yay Photo Studio//Makassar//ID',
+    'PRODID:-//Yay Photo Studio//ID',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',

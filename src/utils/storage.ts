@@ -123,6 +123,12 @@ export function getStoredStudioConfig(): StudioConfig {
     }
     const parsed = JSON.parse(raw);
     const merged: StudioConfig = { ...STUDIO_CONFIG, ...parsed };
+    if (merged.tagline && merged.tagline.toLowerCase().includes('korean')) {
+      merged.tagline = 'Minimalist Self-Photo & Portrait Studio';
+    }
+    if (merged.operatingHours && merged.operatingHours.includes('Makassar')) {
+      merged.operatingHours = 'Setiap Hari · 10:00 - 21:30 WITA (GMT+8)';
+    }
     // Clear legacy preset addresses so user has full control to set custom address from Admin Panel
     if (
       merged.address &&
@@ -508,7 +514,7 @@ export function formatIDR(amount: number): string {
 }
 
 export const TIMEZONE_ID = 'Asia/Makassar';
-export const TIMEZONE_LABEL = 'WITA (GMT+8 · Makassar)';
+export const TIMEZONE_LABEL = 'WITA (GMT+8)';
 
 export function formatTimeWITA(timeSlot: string): string {
   if (!timeSlot) return '';

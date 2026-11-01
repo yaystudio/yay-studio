@@ -102,7 +102,7 @@ export function formatCustomerEmail(booking: Booking, config: StudioConfig): For
     `• Kode Booking: #${booking.id}`,
     `• Paket Layanan: ${booking.serviceName}`,
     `• Tanggal Sesi: ${formatDateIndo(booking.date)}`,
-    `• Jam Sesi: ${booking.timeSlot} WITA (Makassar)`,
+    `• Jam Sesi: ${booking.timeSlot} WITA`,
     `• Pilihan Backdrop: ${booking.backdrop}`,
     `• Jumlah Orang: ${booking.peopleCount} Orang`,
     `• Total Biaya: ${formatIDR(booking.totalPrice)}`,
@@ -156,7 +156,7 @@ export function formatAdminEmail(booking: Booking, config: StudioConfig): Format
     '',
     `Paket Layanan: ${booking.serviceName}`,
     `Tanggal: ${formatDateIndo(booking.date)}`,
-    `Jam: ${booking.timeSlot} WITA (GMT+8 · Makassar)`,
+    `Jam: ${booking.timeSlot} WITA (GMT+8)`,
     `Backdrop: ${booking.backdrop}`,
     `Jumlah Orang: ${booking.peopleCount} Orang`,
     `Total Biaya: ${formatIDR(booking.totalPrice)}`,
@@ -185,6 +185,9 @@ export function formatAdminEmail(booking: Booking, config: StudioConfig): Format
   };
 }
 
+// In-flight and recent dispatch cache to guarantee each booking triggers exactly 1 email request
+const dispatchedBookingCache = new Map<string, Promise<any>>();
+
 /**
  * Sends booking email notifications through the backend server via SMTP/API
  */
@@ -192,39 +195,53 @@ export async function sendBookingEmailViaApi(
   booking: Booking,
   config: StudioConfig
 ): Promise<{ success: boolean; delivered?: boolean; notConfigured?: boolean; adminEmail?: string; customerEmail?: string; message?: string; error?: string }> {
-  try {
-    const res = await fetch('/api/send-booking-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ booking, config }),
-    });
+  if (!booking?.id) {
+    return { success: false, error: 'ID booking tidak valid' };
+  }
 
-    const contentType = res.headers.get('content-type') || '';
-    let data: any = {};
-    if (contentType.includes('application/json')) {
-      data = await res.json().catch(() => ({}));
-    } else {
-      const text = await res.text().catch(() => '');
-      data = { error: text.slice(0, 200) || `Server HTTP ${res.status}` };
-    }
+  // If this booking ID is currently being sent or was sent recently in this session, reuse result
+  if (dispatchedBookingCache.has(booking.id)) {
+    return dispatchedBookingCache.get(booking.id)!;
+  }
 
-    if (!res.ok) {
+  const dispatchPromise = (async () => {
+    try {
+      const res = await fetch('/api/send-booking-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ booking, config }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      let data: any = {};
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => '');
+        data = { error: text.slice(0, 200) || `Server HTTP ${res.status}` };
+      }
+
+      if (!res.ok) {
+        return {
+          success: false,
+          error: data.error || data.message || `Server HTTP ${res.status}`,
+        };
+      }
+
+      return data;
+    } catch (err: any) {
+      console.warn('Network error triggering booking email dispatch:', err);
       return {
         success: false,
-        error: data.error || data.message || `Server HTTP ${res.status}`,
+        error: err.message || 'Gagal menghubungi server email',
       };
     }
+  })();
 
-    return data;
-  } catch (err: any) {
-    console.warn('Network error triggering booking email dispatch:', err);
-    return {
-      success: false,
-      error: err.message || 'Gagal menghubungi server email',
-    };
-  }
+  dispatchedBookingCache.set(booking.id, dispatchPromise);
+  return dispatchPromise;
 }
 
 /**

@@ -82,7 +82,7 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
             </div>
           </div>
 
-          {/* Right Column: Visual Map Card with Korean Studio Aesthetic */}
+          {/* Right Column: Visual Map Card with Minimalist Studio Aesthetic */}
           <div className="lg:col-span-6">
             <div className="relative rounded-3xl bg-neutral-900 p-2 border border-neutral-800 shadow-xl overflow-hidden">
               <div className="relative aspect-[4/3] rounded-2xl bg-neutral-950 flex flex-col justify-between p-6 overflow-hidden">
