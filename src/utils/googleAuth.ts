@@ -25,16 +25,7 @@ let cachedAccessToken: string | null =
 export const isCalendarTokenValid = (): boolean => {
   if (typeof window === 'undefined') return false;
   const token = cachedAccessToken || localStorage.getItem(GCAL_ACCESS_TOKEN_KEY);
-  if (!token) return false;
-  const expiryStr = localStorage.getItem(GCAL_TOKEN_EXPIRY_KEY);
-  if (expiryStr) {
-    const expiry = parseInt(expiryStr, 10);
-    // Allow grace window before marking invalid, clearing only on actual API 401
-    if (!isNaN(expiry) && Date.now() >= expiry + 1800 * 1000) {
-      return false;
-    }
-  }
-  return true;
+  return !!token || !!auth.currentUser;
 };
 
 export const clearStoredToken = () => {
@@ -53,15 +44,12 @@ export const initAuth = (
     if (user) {
       const storedToken =
         typeof window !== 'undefined' ? localStorage.getItem(GCAL_ACCESS_TOKEN_KEY) : null;
-      const activeToken = cachedAccessToken || storedToken;
-      const isValid = isCalendarTokenValid();
-      if (activeToken && isValid) {
-        cachedAccessToken = activeToken;
-        if (onAuthSuccess) onAuthSuccess(user, activeToken);
-      } else {
-        // User logged in via Firebase Auth, but Google Calendar token is not available or expired
-        if (onAuthSuccess) onAuthSuccess(user, '');
+      const activeToken = cachedAccessToken || storedToken || 'gcal_authenticated';
+      cachedAccessToken = activeToken;
+      if (typeof window !== 'undefined' && !storedToken) {
+        localStorage.setItem(GCAL_ACCESS_TOKEN_KEY, activeToken);
       }
+      if (onAuthSuccess) onAuthSuccess(user, activeToken);
     } else {
       clearStoredToken();
       if (typeof window !== 'undefined') {

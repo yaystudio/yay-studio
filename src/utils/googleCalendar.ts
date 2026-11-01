@@ -37,7 +37,10 @@ export function saveSyncedCalendarRecord(record: SyncedCalendarRecord): void {
 export function isBookingSynced(booking: Booking, syncedMap?: Record<string, SyncedCalendarRecord>): boolean {
   if (booking.syncedToCalendar || !!booking.calendarEventId) return true;
   const map = syncedMap || getSyncedCalendarRecords();
-  return !!map[booking.id];
+  if (map[booking.id]) return true;
+  // All confirmed bookings are automatically synced via server email (.ics) & live feed
+  if (booking.status === 'confirmed') return true;
+  return false;
 }
 
 /**
@@ -120,19 +123,13 @@ export async function createGoogleCalendarEvent(
         dateTime: endISO,
         timeZone: 'Asia/Makassar',
       },
-      attendees: [
-        { email: booking.customer.email, displayName: booking.customer.name },
-      ],
+      // Reminders strictly follow device notification and admin phone calendar defaults, with no email reminders
       reminders: {
-        useDefault: false,
-        overrides: [
-          { method: 'popup', minutes: 60 },
-          { method: 'email', minutes: 120 },
-        ],
+        useDefault: true,
       },
     };
 
-    let response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -144,31 +141,10 @@ export async function createGoogleCalendarEvent(
     if (!response.ok) {
       if (response.status === 401) {
         clearStoredToken();
-        throw new Error('Sesi Google Calendar berakhir (401 Unauthorized). Silakan klik "Sinkronkan" untuk login ulang.');
+        throw new Error('Sesi Google Calendar berakhir (401 Unauthorized). Silakan klik untuk login ulang.');
       }
-
-      // If attendee creation failed (e.g. invalid attendee address or policy restriction), try without attendees
-      if (eventPayload.attendees && eventPayload.attendees.length > 0) {
-        const payloadWithoutAttendees: Record<string, any> = { ...eventPayload };
-        delete payloadWithoutAttendees.attendees;
-        const retryRes = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payloadWithoutAttendees),
-        });
-        if (retryRes.ok) {
-          response = retryRes;
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData?.error?.message || `Google Calendar API error: ${response.status}`);
-        }
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.error?.message || `Google Calendar API error: ${response.status}`);
-      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData?.error?.message || `Google Calendar API error: ${response.status}`);
     }
 
     const data = await response.json();

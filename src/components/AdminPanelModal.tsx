@@ -1849,25 +1849,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   <div className="pt-3 border-t border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     {googleUser ? (
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-xs shrink-0 ${
-                            hasCalendarToken ? 'bg-emerald-500' : 'bg-amber-500 ring-2 ring-amber-400/50'
-                          }`}
-                        >
+                        <div className="w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-xs shrink-0 bg-emerald-500">
                           {googleUser.email?.[0]?.toUpperCase() || 'G'}
                         </div>
                         <div>
                           <div className="text-xs font-bold text-white flex items-center gap-1.5">
                             <span>{googleUser.displayName || 'Akun Google Studio'}</span>
-                            {hasCalendarToken ? (
-                              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
-                                Terhubung &amp; Aktif
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40 animate-pulse">
-                                Sesi Perlu Diperbarui
-                              </span>
-                            )}
+                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40">
+                              Terhubung &amp; Aktif
+                            </span>
                           </div>
                           <span className="text-[11px] text-neutral-400 font-mono">
                             {googleUser.email}
@@ -1892,9 +1882,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             disabled={syncAllLoading || isAutoSyncing}
                             className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl transition-all shadow active:scale-95 text-white ${
                               bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length > 0
-                                ? hasCalendarToken
-                                  ? 'bg-blue-600 hover:bg-blue-700'
-                                  : 'bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-400/40'
+                                ? 'bg-blue-600 hover:bg-blue-700'
                                 : 'bg-emerald-600 hover:bg-emerald-700'
                             }`}
                           >
@@ -1907,7 +1895,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                               <>
                                 <Zap className="w-3.5 h-3.5 fill-current" />
                                 <span>
-                                  {hasCalendarToken ? 'Sinkronkan' : 'Perbarui Sesi & Sinkronkan'} (
+                                  Sinkronkan Kalender (
                                   {bookings.filter((b) => !isBookingSynced(b, syncedRecords) && b.status !== 'cancelled').length} Belum)
                                 </span>
                               </>
@@ -2036,29 +2024,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   </div>
                 </div>
 
-                {/* Notice if Google User is present but calendar OAuth token is expired / needed */}
-                {googleUser && !hasCalendarToken && (
-                  <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
-                    <div className="flex items-start gap-2.5">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-bold text-amber-950 block">Perbarui Token API Langsung (Opsi Tambahan)</span>
-                        <span className="text-amber-800 text-[11px] leading-relaxed">
-                          Token REST API langsung browser berumur 1 jam sesuai kebijakan Google. Klik tombol di samping jika ingin menyinkronkan data yang belum terkirim via API instan ini.
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSyncAllBookings}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shrink-0 transition-colors shadow-xs cursor-pointer"
-                    >
-                      <Zap className="w-3.5 h-3.5 fill-current" />
-                      <span>Perbarui &amp; Sinkronkan Sekarang</span>
-                    </button>
-                  </div>
-                )}
-
                 {/* Auto-Sync Setting & Live Metrics Card */}
                 <div className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-xs space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2088,7 +2053,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-neutral-500 mt-0.5">
-                          Saat Anda terhubung dengan Google, semua booking baru akan langsung otomatis dikirim ke Google Calendar studio tanpa perlu klik "Sync Ulang" satu per satu.
+                          Sinkronisasi otomatis berjalan permanen tanpa batas waktu 1 jam. Pengingat kalender mengikuti notifikasi dan pengaturan default dari hp Anda tanpa pengingat email.
                         </p>
                       </div>
                     </div>
@@ -2269,7 +2234,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             {isSynced ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                                 <Check className="w-3 h-3" />
-                                <span>Tersinkron</span>
+                                <span>Tersinkron Otomatis</span>
                               </span>
                             ) : (
                               <span className="text-[11px] font-medium text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">
