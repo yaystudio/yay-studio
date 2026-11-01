@@ -1,7 +1,6 @@
 import React from 'react';
-import { STUDIO_CONFIG } from '../data/studioData';
 import { getStoredStudioConfig } from '../utils/storage';
-import { MapPin, Clock, Mail, Phone, Instagram, Navigation, ShieldCheck } from 'lucide-react';
+import { MapPin, Clock, Mail, Phone, Navigation, ShieldCheck } from 'lucide-react';
 
 interface StudioLocationProps {
   onOpenBooking: () => void;
@@ -46,7 +45,7 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
                   <Clock className="w-4 h-4 text-neutral-900 shrink-0 mt-0.5" />
                   <div>
                     <div className="text-xs font-semibold uppercase text-neutral-400">Jam Operasional</div>
-                    <div className="text-xs font-bold text-neutral-900 mt-0.5">{STUDIO_CONFIG.operatingHours}</div>
+                    <div className="text-xs font-bold text-neutral-900 mt-0.5">{config.operatingHours}</div>
                   </div>
                 </div>
 
@@ -54,7 +53,7 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
                   <Mail className="w-4 h-4 text-neutral-900 shrink-0 mt-0.5" />
                   <div>
                     <div className="text-xs font-semibold uppercase text-neutral-400">Email Studio</div>
-                    <div className="text-xs font-bold text-neutral-900 mt-0.5 font-mono">{STUDIO_CONFIG.adminEmail}</div>
+                    <div className="text-xs font-bold text-neutral-900 mt-0.5 font-mono">{config.adminEmail}</div>
                   </div>
                 </div>
               </div>
@@ -63,7 +62,7 @@ export const StudioLocation: React.FC<StudioLocationProps> = ({ onOpenBooking, o
             {/* CTAs */}
             <div className="pt-2 flex flex-wrap items-center gap-4">
               <a
-                href={`https://wa.me/${STUDIO_CONFIG.whatsappNumber}?text=${encodeURIComponent(
+                href={`https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(
                   'Halo Admin Yay Photo Studio, saya ingin bertanya seputar jadwal dan layanan studio...'
                 )}`}
                 target="_blank"

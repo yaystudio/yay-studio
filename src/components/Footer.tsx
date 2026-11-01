@@ -1,5 +1,6 @@
 import React from 'react';
-import { STUDIO_CONFIG, SERVICES } from '../data/studioData';
+import { SERVICES } from '../data/studioData';
+import { getStoredStudioConfig } from '../utils/storage';
 import { Camera, ShieldCheck, Heart } from 'lucide-react';
 
 interface FooterProps {
@@ -8,6 +9,8 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenAdmin }) => {
+  const config = getStoredStudioConfig();
+
   return (
     <footer className="bg-neutral-950 text-neutral-400 border-t border-neutral-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
@@ -19,14 +22,14 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenAdmin }) =>
                 <Camera className="w-4 h-4" />
               </div>
               <span className="font-display font-extrabold text-lg tracking-tight uppercase">
-                {STUDIO_CONFIG.name}
+                {config.name}
               </span>
             </div>
             <p className="text-xs sm:text-sm text-neutral-400 max-w-sm leading-relaxed">
               Studio foto mandiri & potret bergaya monokrom minimalis Korea. Abadikan momen terbaik Anda bersama orang tersayang tanpa rasa canggung di ruang studio privat berfasilitas lengkap.
             </p>
             <div className="text-xs text-neutral-500 font-mono">
-              SENOPATI · JAKARTA SELATAN · EST. 2024
+              {config.address ? `${config.address.toUpperCase()} · ` : ''}EST. 2024
             </div>
           </div>
 
@@ -62,15 +65,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenAdmin }) =>
             <ul className="space-y-2 text-xs">
               <li>
                 <span className="text-neutral-500 block">Email Admin:</span>
-                <span className="text-neutral-300 font-mono">{STUDIO_CONFIG.adminEmail}</span>
+                <span className="text-neutral-300 font-mono">{config.adminEmail}</span>
               </li>
               <li>
                 <span className="text-neutral-500 block">WhatsApp CS:</span>
-                <span className="text-neutral-300 font-mono">+{STUDIO_CONFIG.whatsappNumber}</span>
-              </li>
-              <li>
-                <span className="text-neutral-500 block">Instagram:</span>
-                <span className="text-neutral-300">{STUDIO_CONFIG.instagram}</span>
+                <span className="text-neutral-300 font-mono">+{config.whatsappNumber}</span>
               </li>
               <li className="pt-2">
                 <button
@@ -88,7 +87,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenBooking, onOpenAdmin }) =>
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
           <div>
-            &copy; {new Date().getFullYear()} {STUDIO_CONFIG.name}. Seluruh Hak Cipta Dilindungi.
+            &copy; {new Date().getFullYear()} {config.name}. Seluruh Hak Cipta Dilindungi.
           </div>
           <div className="flex items-center gap-6">
             <a href="#faq" className="hover:text-neutral-400 transition-colors">

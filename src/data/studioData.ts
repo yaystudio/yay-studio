@@ -7,7 +7,7 @@ export const STUDIO_CONFIG: StudioConfig = {
   whatsappNumber: "6281234567890",
   address: "",
   operatingHours: "Setiap Hari · 10:00 - 21:30 WITA (GMT+8 · Makassar)",
-  instagram: "@yayphotostudio",
+  instagram: "",
   paymentNote: "Pembayaran dapat dilakukan saat di studio",
   customerEmailSubject: "Konfirmasi Booking {studioName} - #{bookingId}",
   customerEmailGreeting: "Halo {customerName},",

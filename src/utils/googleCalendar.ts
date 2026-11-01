@@ -103,7 +103,7 @@ export async function createGoogleCalendarEvent(
       `• Email: ${booking.customer.email}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       ...(studioAddress ? [`LOKASI STUDIO:`, studioAddress] : []),
-      `Instagram: ${currentConfig.instagram || STUDIO_CONFIG.instagram} | WhatsApp: +${currentConfig.whatsappNumber || STUDIO_CONFIG.whatsappNumber}`,
+      `WhatsApp: +${currentConfig.whatsappNumber || STUDIO_CONFIG.whatsappNumber}`,
       `*Harap hadir 10 menit sebelum jam sesi dimulai.`
     ].join('\n');
 

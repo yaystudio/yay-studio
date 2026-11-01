@@ -290,9 +290,15 @@ app.post('/api/send-booking-email', async (req, res) => {
     });
   } catch (err: any) {
     console.error('Error sending booking emails:', err);
+    let errMsg = err.message || 'Gagal mengirim email';
+    if (errMsg.includes('534') || errMsg.includes('Application-specific password') || errMsg.includes('InvalidSecondFactor')) {
+      errMsg = 'Google mewajibkan Sandi Aplikasi (App Password 16 karakter). Kunjungi myaccount.google.com/apppasswords untuk membuat sandi aplikasi 16 karakter.';
+    } else if (errMsg.includes('Invalid login') || errMsg.includes('Username and Password not accepted')) {
+      errMsg = 'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan menggunakan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
+    }
     return res.status(500).json({
       success: false,
-      error: err.message || 'Gagal mengirim email',
+      error: errMsg,
     });
   }
 });
@@ -324,18 +330,27 @@ app.post('/api/test-smtp', async (req, res) => {
 
     await testTransporter.verify();
 
+    // Read studio address dynamically
+    let studioAddr = '';
+    try {
+      const configDoc = await getDoc(doc(db, 'config', 'studio'));
+      if (configDoc.exists()) {
+        studioAddr = configDoc.data()?.address || '';
+      }
+    } catch {}
+
     await testTransporter.sendMail({
       from: `"Yay Photo Studio Test" <${String(smtpUser).trim()}>`,
       to: targetRecipient,
       subject: '[Tes Sistem] Koneksi Email Yay Photo Studio Berhasil!',
       html: `
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <h2 style="color: #059669; margin-top: 0;">🎉 Koneksi Email Berhasil!</h2>
-          <p>Halo Admin Yay Photo Studio Makassar,</p>
+          <h2 style="color: #059669; margin-top: 0;">🎉 Koneksi Email Otomatis Berhasil!</h2>
+          <p>Halo Admin Yay Photo Studio,</p>
           <p>Ini adalah pesan konfirmasi uji coba. Server email studio Anda telah terhubung dengan sempurna ke <strong>${targetRecipient}</strong>.</p>
-          <p>Mulai sekarang, setiap ada pelanggan yang melakukan reservasi baru, email pemberitahuan otomatis akan langsung dikirimkan ke email ini.</p>
+          <p>Mulai sekarang, setiap ada pelanggan yang melakukan reservasi baru di website, email pemberitahuan otomatis akan langsung masuk ke inbox Anda dan inbox customer tanpa perlu menekan tombol apapun.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #64748b; margin: 0;">Yay Photo Studio · Ruko Pasar Segar Panakkukang Makassar</p>
+          <p style="font-size: 12px; color: #64748b; margin: 0;">Yay Photo Studio${studioAddr ? ` · ${studioAddr}` : ''}</p>
         </div>
       `,
     });
@@ -346,9 +361,15 @@ app.post('/api/test-smtp', async (req, res) => {
     });
   } catch (err: any) {
     console.error('SMTP test failure:', err);
+    let errMsg = err.message || 'Gagal mengirim email uji coba.';
+    if (errMsg.includes('534') || errMsg.includes('Application-specific password') || errMsg.includes('InvalidSecondFactor')) {
+      errMsg = 'Google mewajibkan "Sandi Aplikasi" (App Password 16 karakter), bukan password akun Gmail biasa. Silakan buat sandi aplikasi di myaccount.google.com/apppasswords.';
+    } else if (errMsg.includes('Invalid login') || errMsg.includes('Username and Password not accepted')) {
+      errMsg = 'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan Anda memasukkan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
+    }
     return res.status(400).json({
       success: false,
-      error: err.message || 'Gagal mengirim email uji coba. Periksa host, port, dan sandi aplikasi.',
+      error: errMsg,
     });
   }
 });

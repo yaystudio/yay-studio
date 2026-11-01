@@ -212,49 +212,26 @@ export const BookingSuccessModal: React.FC<BookingSuccessModalProps> = ({
 
           {/* Dual Email Delivery Notification */}
           <div className="mt-4 p-3 bg-neutral-900/90 rounded-xl border border-neutral-800 text-[11px] sm:text-xs text-neutral-300 space-y-2 text-left max-w-md mx-auto">
-            <div className="flex items-center gap-1.5 text-neutral-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>Email konfirmasi dikirim ke: <strong>{booking.customer.email}</strong></span>
+            <div className="flex items-center justify-between gap-2 text-neutral-200">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                <span className="truncate">Email customer: <strong>{booking.customer.email}</strong></span>
+              </div>
+              <span className="text-[10px] bg-emerald-950/80 text-emerald-300 border border-emerald-600/30 px-2 py-0.5 rounded font-mono shrink-0">
+                {emailStatus === 'sending' ? 'Mengirim...' : 'Otomatis'}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-2 text-neutral-200">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    emailStatus === 'sent'
-                      ? 'bg-emerald-400'
-                      : emailStatus === 'sending'
-                      ? 'bg-amber-400 animate-pulse'
-                      : 'bg-blue-400'
-                  }`}
-                />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
                 <span className="truncate">
-                  Notifikasi admin: <strong>{studioConfig.adminEmail || STUDIO_CONFIG.adminEmail}</strong>
+                  Email admin: <strong>{studioConfig.adminEmail || 'yayphotostudio@gmail.com'}</strong>
                 </span>
               </div>
-              {emailStatus === 'sent' && (
-                <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-600/40 px-2 py-0.5 rounded font-mono shrink-0">
-                  Terkirim Otomatis
-                </span>
-              )}
+              <span className="text-[10px] bg-blue-950/80 text-blue-300 border border-blue-600/30 px-2 py-0.5 rounded font-mono shrink-0">
+                Otomatis
+              </span>
             </div>
-
-            {emailStatus !== 'sent' && (
-              <div className="pt-2 border-t border-neutral-800 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-neutral-400">
-                  Kirim notifikasi langsung ke admin:
-                </span>
-                <a
-                  href={adminEmailFormatted.gmailComposeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 bg-white text-neutral-950 hover:bg-neutral-200 px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-xs transition-colors shrink-0"
-                >
-                  <Send className="w-3 h-3 text-blue-600" />
-                  <span>Kirim via Gmail</span>
-                  <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                </a>
-              </div>
-            )}
           </div>
         </div>
 

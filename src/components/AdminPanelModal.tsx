@@ -2415,7 +2415,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                                   smtpPass: e.target.value,
                                 })
                               }
-                              placeholder="xxxx xxxx xxxx xxxx"
+                              placeholder="xxxx xxxx xxxx xxxx (16 karakter)"
                               className="w-full pr-8 pl-3 py-2 text-xs rounded-xl border border-neutral-300 bg-white font-mono"
                             />
                             <button
@@ -2426,6 +2426,22 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                               {showSmtpPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                             </button>
                           </div>
+                          {studioConfig.smtpPass && studioConfig.smtpPass.replace(/\s+/g, '').length !== 16 && (
+                            <div className="mt-1.5 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-start gap-1.5 leading-snug">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                              <div>
+                                <strong>Perhatian:</strong> Google menolak sandi login biasa (kode 534). Anda wajib menggunakan <strong>Sandi Aplikasi 16-karakter</strong>.{' '}
+                                <a
+                                  href="https://myaccount.google.com/apppasswords"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline font-semibold text-blue-600 hover:text-blue-800"
+                                >
+                                  Buat Sandi Aplikasi di Google (1 menit) &rarr;
+                                </a>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
