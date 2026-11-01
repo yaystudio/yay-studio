@@ -119,7 +119,7 @@ app.get(['/api/calendar.ics', '/api/calendar', '/calendar.ics'], async (req, res
 
 // Helper to create nodemailer transporter
 function getTransporter(config: any) {
-  const user = config?.smtpUser || process.env.SMTP_USER;
+  const user = config?.smtpUser || config?.adminEmail || process.env.SMTP_USER || 'yayphotostudio@gmail.com';
   const pass = config?.smtpPass || process.env.SMTP_PASS;
   const host = config?.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = Number(config?.smtpPort || process.env.SMTP_PORT || 465);
@@ -148,22 +148,21 @@ app.post('/api/send-booking-email', async (req, res) => {
       return res.status(400).json({ error: 'Data booking diperlukan' });
     }
 
-    // Merge with Firestore config if needed
-    let studioConfig = config;
-    if (!studioConfig || !studioConfig.smtpUser) {
-      try {
-        const configDoc = await getDoc(doc(db, 'config', 'studio'));
-        if (configDoc.exists()) {
-          studioConfig = { ...studioConfig, ...configDoc.data() };
-        }
-      } catch (e) {
-        console.warn('Could not read Firestore config on server:', e);
+    // Always fetch latest authoritative studio config from Firestore
+    let studioConfig = { ...config };
+    try {
+      const configDoc = await getDoc(doc(db, 'config', 'studio'));
+      if (configDoc.exists()) {
+        studioConfig = { ...studioConfig, ...configDoc.data() };
       }
+    } catch (e) {
+      console.warn('Could not read Firestore config on server:', e);
     }
 
     const adminEmail = studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
     const address = studioConfig?.address || '';
     const studioName = studioConfig?.name || 'Yay Photo Studio';
+    const senderUser = studioConfig?.smtpUser || studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
 
     const transporter = getTransporter(studioConfig);
 
@@ -177,7 +176,7 @@ app.post('/api/send-booking-email', async (req, res) => {
       });
     }
 
-    const fromAddress = studioConfig?.smtpFrom || `"${studioName}" <${studioConfig.smtpUser}>`;
+    const fromAddress = studioConfig?.smtpFrom || `"${studioName}" <${senderUser}>`;
 
     // 1. Admin Email HTML
     const adminSubject = `[Booking Baru Masuk] ${booking.serviceName} - ${booking.customer?.name} (#${booking.id})`;
@@ -307,24 +306,40 @@ app.post('/api/send-booking-email', async (req, res) => {
 app.post('/api/test-smtp', async (req, res) => {
   try {
     const { smtpHost, smtpPort, smtpUser, smtpPass, recipient } = req.body;
-    if (!smtpUser || !smtpPass) {
+    let user = smtpUser;
+    let pass = smtpPass;
+
+    if (!pass || !user) {
+      try {
+        const configDoc = await getDoc(doc(db, 'config', 'studio'));
+        if (configDoc.exists()) {
+          const d = configDoc.data();
+          pass = pass || d?.smtpPass;
+          user = user || d?.smtpUser || d?.adminEmail;
+        }
+      } catch {}
+    }
+
+    user = user || 'yayphotostudio@gmail.com';
+
+    if (!pass) {
       return res.status(400).json({
         success: false,
-        error: 'Email Akun / User dan Password / Sandi Aplikasi Gmail wajib diisi.',
+        error: 'Sandi Aplikasi Gmail (16 karakter) belum diisi. Masukkan 16 karakter dari myaccount.google.com/apppasswords.',
       });
     }
 
     const host = smtpHost || 'smtp.gmail.com';
     const port = Number(smtpPort || 465);
-    const targetRecipient = recipient || smtpUser || 'yayphotostudio@gmail.com';
+    const targetRecipient = recipient || user || 'yayphotostudio@gmail.com';
 
     const testTransporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
       auth: {
-        user: String(smtpUser).trim(),
-        pass: String(smtpPass).trim(),
+        user: String(user).trim(),
+        pass: String(pass).trim(),
       },
     });
 

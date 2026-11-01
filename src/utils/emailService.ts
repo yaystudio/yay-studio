@@ -201,15 +201,22 @@ export async function sendBookingEmailViaApi(
       body: JSON.stringify({ booking, config }),
     });
 
+    const contentType = res.headers.get('content-type') || '';
+    let data: any = {};
+    if (contentType.includes('application/json')) {
+      data = await res.json().catch(() => ({}));
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { error: text.slice(0, 200) || `Server HTTP ${res.status}` };
+    }
+
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
       return {
         success: false,
-        error: errData.error || `Server HTTP ${res.status}`,
+        error: data.error || data.message || `Server HTTP ${res.status}`,
       };
     }
 
-    const data = await res.json();
     return data;
   } catch (err: any) {
     console.warn('Network error triggering booking email dispatch:', err);
@@ -239,7 +246,22 @@ export async function testSmtpConnection(params: {
       body: JSON.stringify(params),
     });
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    let data: any = {};
+    if (contentType.includes('application/json')) {
+      data = await res.json().catch(() => ({}));
+    } else {
+      const text = await res.text().catch(() => '');
+      data = { error: text.slice(0, 200) || `Server HTTP ${res.status}` };
+    }
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: data.error || data.message || `Server HTTP ${res.status}`,
+      };
+    }
+
     return data;
   } catch (err: any) {
     return {
