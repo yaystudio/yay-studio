@@ -76,6 +76,8 @@ import {
   logout,
   getAccessToken,
   getFreshAccessToken,
+  getImmediateFreshAccessToken,
+  isAdminBrowser,
   isCalendarTokenValid,
   isCalendarTokenFresh,
   clearStoredToken,
@@ -303,14 +305,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const triggerAutoSync = async (passedToken?: string, targetBookings?: Booking[]) => {
     try {
       if (!autoSyncEnabled) return;
-      let token = passedToken;
-      if (!token && isCalendarTokenFresh()) {
+      let token = passedToken || getImmediateFreshAccessToken() || undefined;
+      if (!token) {
         token = (await getFreshAccessToken(false)) || undefined;
       }
       if (!token) {
         // Token is not fresh in background; skip silent REST API call without raising error
         return;
       }
+      setHasCalendarToken(true);
 
       const activeBookings =
         targetBookings && targetBookings.length > 0
@@ -606,11 +609,35 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   if (!isOpen) return null;
 
   // PIN Login Form
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (pinInput === '1234' || pinInput === 'admin') {
       setIsAuthenticated(true);
       setPinError('');
+
+      // Seamless auto-sync & token refresh right inside the PIN submit user gesture
+      if (autoSyncEnabled) {
+        let token = getImmediateFreshAccessToken();
+        const activeBookings = bookings.length > 0 ? bookings : getStoredBookings();
+        const currentSynced = getSyncedCalendarRecords();
+        const hasPending = activeBookings.some(
+          (b) => !isBookingSynced(b, currentSynced) && b.status !== 'cancelled'
+        );
+
+        if (!token && isAdminBrowser() && hasPending) {
+          try {
+            token = await getFreshAccessToken(true);
+          } catch {
+            token = null;
+          }
+        }
+        if (token) {
+          setHasCalendarToken(true);
+          triggerAutoSync(token, activeBookings);
+        } else {
+          triggerAutoSync(undefined, activeBookings);
+        }
+      }
     } else {
       setPinError('PIN salah. Gunakan PIN default: 1234');
     }
@@ -898,7 +925,30 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('calendar')}
+                  onClick={async () => {
+                    setActiveTab('calendar');
+                    if (autoSyncEnabled) {
+                      let token = getImmediateFreshAccessToken();
+                      const activeBookings = bookings.length > 0 ? bookings : getStoredBookings();
+                      const currentSynced = getSyncedCalendarRecords();
+                      const hasPending = activeBookings.some(
+                        (b) => !isBookingSynced(b, currentSynced) && b.status !== 'cancelled'
+                      );
+                      if (!token && isAdminBrowser() && hasPending) {
+                        try {
+                          token = await getFreshAccessToken(true);
+                        } catch {
+                          token = null;
+                        }
+                      }
+                      if (token) {
+                        setHasCalendarToken(true);
+                        triggerAutoSync(token, activeBookings);
+                      } else {
+                        triggerAutoSync(undefined, activeBookings);
+                      }
+                    }
+                  }}
                   className={`py-3.5 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap ${
                     activeTab === 'calendar'
                       ? 'border-neutral-950 text-neutral-950'

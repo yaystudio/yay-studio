@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +18,15 @@ app.use(express.json());
 // Initialize Firebase for server
 const fbApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(fbApp, (firebaseConfig as any).firestoreDatabaseId);
+
+function getDeterministicCalendarEventId(bookingId: string): string {
+  const raw = `yaystudio-${String(bookingId || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  let hex = '';
+  for (let i = 0; i < raw.length; i++) {
+    hex += raw.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+  return hex;
+}
 
 // iCal Feed Route for Google Calendar / Apple Calendar
 app.get(['/api/calendar.ics', '/api/calendar', '/calendar.ics'], async (req, res) => {
@@ -46,7 +55,7 @@ app.get(['/api/calendar.ics', '/api/calendar', '/calendar.ics'], async (req, res
         const [hourStr, minStr] = (b.timeSlot || '10:00').split(':');
         const startHour = parseInt(hourStr || '10', 10);
         const startMin = parseInt(minStr || '00', 10);
-        const durationMinutes = 30;
+        const durationMinutes = Number(b.durationMinutes) || 30;
         const totalStartMinutes = startHour * 60 + startMin;
         const totalEndMinutes = totalStartMinutes + durationMinutes;
         const endHour = Math.floor(totalEndMinutes / 60);
@@ -164,6 +173,84 @@ app.post('/api/send-booking-email', async (req, res) => {
     const studioName = studioConfig?.name || 'Yay Photo Studio';
     const senderUser = studioConfig?.smtpUser || studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
 
+    const bookingDuration = Number(booking.durationMinutes) || 30;
+    const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
+    const startH = parseInt(hStr || '10', 10);
+    const startM = parseInt(mStr || '00', 10);
+    const endMinutes = startH * 60 + startM + bookingDuration;
+    const endH = Math.floor(endMinutes / 60);
+    const endM = endMinutes % 60;
+    const cleanD = (booking.date || '').replace(/-/g, '');
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    // Server-side automatic Google Calendar API sync if cloud token is fresh and booking not yet synced
+    const cloudToken = studioConfig?.googleAccessToken;
+    const cloudExpiry = Number(studioConfig?.googleTokenExpiry || 0);
+    if (
+      booking.id &&
+      !booking.syncedToCalendar &&
+      cloudToken &&
+      cloudToken !== 'gcal_authenticated' &&
+      cloudExpiry > Date.now()
+    ) {
+      try {
+        const deterministicId = getDeterministicCalendarEventId(booking.id);
+        const startISO = `${booking.date}T${pad(startH)}:${pad(startM)}:00+08:00`;
+        const endISO = `${booking.date}T${pad(endH)}:${pad(endM)}:00+08:00`;
+        const gcalPayload = {
+          id: deterministicId,
+          summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer?.name}`,
+          description: [
+            `📸 ${studioName.toUpperCase()}`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `• Kode Reservasi: #${booking.id}`,
+            `• Layanan: ${booking.serviceName}`,
+            `• Tanggal Sesi: ${booking.date}`,
+            `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8)`,
+            `• Warna Backdrop: ${booking.backdrop || '-'}`,
+            `• Jumlah Orang: ${booking.peopleCount} Orang`,
+            `• Total Biaya: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}`,
+            `• Pembayaran: ${booking.paymentNote || 'Pembayaran dapat dilakukan saat di studio'}`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `DATA PEMESAN:`,
+            `• Nama: ${booking.customer?.name || '-'}`,
+            `• WhatsApp: ${booking.customer?.whatsapp || '-'}`,
+            `• Email: ${booking.customer?.email || '-'}`,
+            ...(address ? [`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, `LOKASI STUDIO:`, address] : []),
+          ].join('\n'),
+          location: address || undefined,
+          start: { dateTime: startISO, timeZone: 'Asia/Makassar' },
+          end: { dateTime: endISO, timeZone: 'Asia/Makassar' },
+          reminders: { useDefault: true },
+        };
+
+        const gcalRes = await fetch(
+          'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${cloudToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(gcalPayload),
+          }
+        );
+
+        if (gcalRes.ok || gcalRes.status === 409) {
+          await setDoc(
+            doc(db, 'bookings', booking.id),
+            {
+              syncedToCalendar: true,
+              calendarEventId: deterministicId,
+            },
+            { merge: true }
+          );
+        }
+      } catch (gcalErr) {
+        console.warn('Server-side Google Calendar sync note:', gcalErr);
+      }
+    }
+
     const transporter = getTransporter(studioConfig);
 
     if (!transporter) {
@@ -216,56 +303,12 @@ app.post('/api/send-booking-email', async (req, res) => {
       </div>
     `;
 
-    // Generate iCalendar format for admin's calendar entry only
-    const bookingDuration = Number(booking.durationMinutes) || 30;
-    const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
-    const startH = parseInt(hStr || '10', 10);
-    const startM = parseInt(mStr || '00', 10);
-    const endMinutes = startH * 60 + startM + bookingDuration;
-    const endH = Math.floor(endMinutes / 60);
-    const endM = endMinutes % 60;
-    const cleanD = (booking.date || '').replace(/-/g, '');
-    const dtStart = `${cleanD}T${String(startH).padStart(2, '0')}${String(startM).padStart(2, '0')}00`;
-    const dtEnd = `${cleanD}T${String(endH).padStart(2, '0')}${String(endM).padStart(2, '0')}00`;
-    const dtNow = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-    const icsBookingEvent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Yay Photo Studio//ID',
-      'CALSCALE:GREGORIAN',
-      'METHOD:REQUEST',
-      'BEGIN:VEVENT',
-      `UID:yay-booking-${booking.id}@yayphotostudio.com`,
-      `DTSTAMP:${dtNow}`,
-      `DTSTART;TZID=Asia/Makassar:${dtStart}`,
-      `DTEND;TZID=Asia/Makassar:${dtEnd}`,
-      `SUMMARY:[Yay Studio] ${booking.serviceName} - ${booking.customer?.name}`,
-      `DESCRIPTION:Kode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nTanggal: ${booking.date}\\nJam: ${booking.timeSlot} WITA\\nPelanggan: ${booking.customer?.name} (${booking.customer?.whatsapp})\\nTotal: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}${address ? `\\nLokasi: ${address}` : ''}`,
-      ...(address ? [`LOCATION:${address}`] : []),
-      'STATUS:CONFIRMED',
-      `ORGANIZER;CN="${studioName}":mailto:${senderUser}`,
-      `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Admin Yay Studio":mailto:${adminEmail}`,
-      'BEGIN:VALARM',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:Pengingat Sesi Foto Yay Studio',
-      'TRIGGER:-PT15M',
-      'END:VALARM',
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].join('\r\n');
-
-    // Send to Admin with official calendar invite so Gmail automatically & permanently adds to Google Calendar
+    // Send to Admin without icalEvent REQUEST so there is never a duplicate event in Google Calendar
     const sendAdminPromise = transporter.sendMail({
       from: fromAddress,
       to: adminEmail,
       subject: adminSubject,
       html: adminHtml,
-      icalEvent: {
-        filename: `jadwal-${booking.id}.ics`,
-        method: 'REQUEST',
-        content: icsBookingEvent,
-      },
     });
 
     // Send single confirmation to Customer without separate RSVP invitation so customer receives ONLY 1 email

@@ -31,15 +31,26 @@ export function saveSyncedCalendarRecord(record: SyncedCalendarRecord): void {
 }
 
 /**
+ * Generates a deterministic valid Google Calendar Event ID (base32hex: [a-v0-9]{5,1024})
+ * from a booking ID so Google Calendar strictly enforces at most 1 event per booking.
+ */
+export function getDeterministicCalendarEventId(bookingId: string): string {
+  const raw = `yaystudio-${String(bookingId || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+  let hex = '';
+  for (let i = 0; i < raw.length; i++) {
+    hex += raw.charCodeAt(i).toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
+/**
  * Checks whether a booking has already been synced to Google Calendar,
  * either in localStorage record, or via persistent Cloud Firestore fields.
  */
 export function isBookingSynced(booking: Booking, syncedMap?: Record<string, SyncedCalendarRecord>): boolean {
   if (booking.syncedToCalendar || !!booking.calendarEventId) return true;
   const map = syncedMap || getSyncedCalendarRecords();
-  if (map[booking.id]) return true;
-  // All confirmed bookings are automatically synced via server email (.ics) & live feed
-  if (booking.status === 'confirmed') return true;
+  if (map[booking.id]?.calendarEventId) return true;
   return false;
 }
 
@@ -89,15 +100,17 @@ export async function createGoogleCalendarEvent(
     return { success: false, error: 'ID booking tidak valid' };
   }
 
+  const deterministicId = getDeterministicCalendarEventId(booking.id);
+
   // 1. Prevent concurrent duplicate calls for the same booking
   if (inFlightCalendarSyncs.has(booking.id)) {
-    return { success: true };
+    return { success: true, eventId: deterministicId };
   }
 
   // 2. Prevent duplicate creation if booking was already synced
   const existingRecords = getSyncedCalendarRecords();
   if (existingRecords[booking.id]?.calendarEventId || booking.calendarEventId) {
-    const existingId = existingRecords[booking.id]?.calendarEventId || booking.calendarEventId;
+    const existingId = existingRecords[booking.id]?.calendarEventId || booking.calendarEventId || deterministicId;
     return {
       success: true,
       eventId: existingId,
@@ -137,7 +150,7 @@ export async function createGoogleCalendarEvent(
     ].join('\n');
 
     const eventPayload = {
-      iCalUID: `yay-booking-${booking.id}@yayphotostudio.com`,
+      id: deterministicId,
       summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`,
       description,
       location: studioAddress || undefined,
@@ -155,7 +168,7 @@ export async function createGoogleCalendarEvent(
       },
     };
 
-    const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    let response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -164,11 +177,25 @@ export async function createGoogleCalendarEvent(
       body: JSON.stringify(eventPayload),
     });
 
+    // If event with this deterministic ID already exists (409 Conflict), update it in place so there is only 1 event
+    if (response.status === 409) {
+      response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${deterministicId}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...eventPayload,
+            status: 'confirmed',
+          }),
+        }
+      );
+    }
+
     if (!response.ok) {
-      if (response.status === 409) {
-        // Event with this unique ID already exists in Google Calendar
-        return { success: true };
-      }
       if (response.status === 401) {
         clearStoredToken();
         return { success: false, error: 'TOKEN_EXPIRED' };
@@ -178,10 +205,11 @@ export async function createGoogleCalendarEvent(
     }
 
     const data = await response.json();
+    const finalEventId = data.id || deterministicId;
 
     const record: SyncedCalendarRecord = {
       bookingId: booking.id,
-      calendarEventId: data.id,
+      calendarEventId: finalEventId,
       htmlLink: data.htmlLink,
       syncedAt: new Date().toISOString(),
     };
@@ -189,7 +217,7 @@ export async function createGoogleCalendarEvent(
 
     // Update the booking object and persist to Firestore + local storage
     booking.syncedToCalendar = true;
-    booking.calendarEventId = data.id;
+    booking.calendarEventId = finalEventId;
     try {
       saveBooking(booking);
       saveBookingToCloud(booking).catch((cloudErr) => {
@@ -199,7 +227,7 @@ export async function createGoogleCalendarEvent(
 
     return {
       success: true,
-      eventId: data.id,
+      eventId: finalEventId,
       htmlLink: data.htmlLink,
     };
   } catch (err: any) {

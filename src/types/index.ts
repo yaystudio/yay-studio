@@ -92,5 +92,9 @@ export interface StudioConfig {
   smtpUser?: string;
   smtpPass?: string;
   smtpFrom?: string;
+  // Persisted Google Calendar OAuth token for automatic sync
+  googleAccessToken?: string;
+  googleTokenExpiry?: number;
+  googleUserEmail?: string;
 }
 

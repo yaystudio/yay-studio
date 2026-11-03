@@ -5,8 +5,12 @@ import { generateBookingId, saveBooking, getMakassarDateTime, getStoredStudioCon
 import { CalendlyDateTimeSelector } from './CalendlyDateTimeSelector';
 import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
-import { getAccessToken } from '../utils/googleAuth';
-import { createGoogleCalendarEvent } from '../utils/googleCalendar';
+import {
+  getImmediateFreshAccessToken,
+  getFreshAccessToken,
+  isAdminBrowser,
+} from '../utils/googleAuth';
+import { createGoogleCalendarEvent, getAutoSyncEnabled } from '../utils/googleCalendar';
 import { saveBookingToCloud } from '../utils/firestoreService';
 import { dispatchBookingNotifications } from '../utils/emailService';
 
@@ -74,14 +78,53 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
+    // 1. Check for immediate fresh token synchronously while in direct user click gesture
+    let token: string | null = null;
+    if (getAutoSyncEnabled()) {
+      token = getImmediateFreshAccessToken();
+      if (!token && isAdminBrowser()) {
+        try {
+          // If this is the admin's browser and the 1-hour token expired, refresh right inside the click gesture
+          token = await getFreshAccessToken(true);
+        } catch {
+          token = null;
+        }
+      }
+      if (!token) {
+        try {
+          token = await getFreshAccessToken(false);
+        } catch {
+          token = null;
+        }
+      }
+    }
+
     saveBooking(newBooking);
 
-    // Persist to Cloud Firestore across all devices
+    // 2. Sync to Google Calendar immediately if token is available
+    if (token) {
+      try {
+        const calRes = await createGoogleCalendarEvent(
+          newBooking,
+          token,
+          service.durationMinutes || 30
+        );
+        if (calRes.success && calRes.eventId) {
+          newBooking.syncedToCalendar = true;
+          newBooking.calendarEventId = calRes.eventId;
+          saveBooking(newBooking);
+        }
+      } catch (calErr) {
+        console.warn('Auto calendar sync note:', calErr);
+      }
+    }
+
+    // 3. Persist to Cloud Firestore across all devices
     saveBookingToCloud(newBooking).catch((err) => {
       console.warn('Cloud booking save note:', err);
     });
 
-    // Prepare and dispatch email notifications (customer confirmation & admin notification)
+    // 4. Prepare and dispatch email notifications (customer confirmation & admin notification)
     try {
       const currentConfig = getStoredStudioConfig();
       dispatchBookingNotifications(newBooking, currentConfig);
