@@ -7,7 +7,6 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import firebaseConfig from '../../firebase-applet-config.json';
 
 export const SCOPES = ['https://www.googleapis.com/auth/calendar.events'];
 
@@ -129,67 +128,6 @@ export const clearStoredToken = () => {
   }
 };
 
-/**
- * Attempts silent OAuth token refresh via Google Identity Services (GIS) if loaded
- */
-export const requestSilentGisToken = (hintEmail?: string): Promise<string | null> => {
-  return new Promise((resolve) => {
-    try {
-      const g = (window as any)?.google?.accounts?.oauth2;
-      const clientId = (firebaseConfig as any)?.oAuthClientId;
-      if (!g || !clientId) {
-        resolve(null);
-        return;
-      }
-
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          resolve(null);
-        }
-      }, 6000);
-
-      const tokenClient = g.initTokenClient({
-        client_id: clientId,
-        scope: SCOPES.join(' '),
-        hint: hintEmail || getStoredGoogleUserEmail() || 'yayphotostudio@gmail.com',
-        prompt: '',
-        callback: (response: any) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          if (response && response.access_token) {
-            const expiresIn = Number(response.expires_in || 3500);
-            const expiryTimestamp = Date.now() + Math.max(expiresIn - 100, 300) * 1000;
-            saveTokenEverywhere(
-              response.access_token,
-              expiryTimestamp,
-              hintEmail || getStoredGoogleUserEmail() || 'yayphotostudio@gmail.com'
-            );
-            resolve(response.access_token);
-          } else {
-            resolve(null);
-          }
-        },
-        error_callback: () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(null);
-        },
-      });
-
-      tokenClient.requestAccessToken({
-        prompt: '',
-        hint: hintEmail || getStoredGoogleUserEmail() || 'yayphotostudio@gmail.com',
-      });
-    } catch {
-      resolve(null);
-    }
-  });
-};
-
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
@@ -257,8 +195,7 @@ export const getFreshAccessToken = async (interactive = false): Promise<string |
   const immediate = getImmediateFreshAccessToken();
   if (immediate) return immediate;
 
-  // 2. If interactive is true, call googleSignIn() BEFORE awaiting network calls
-  // so browser popup blocker never blocks the window, or try GIS first if not blocked
+  // 2. If interactive is true, call googleSignIn() via Firebase Auth popup BEFORE awaiting network calls
   if (interactive) {
     const res = await googleSignIn();
     return res?.accessToken || null;
@@ -267,12 +204,6 @@ export const getFreshAccessToken = async (interactive = false): Promise<string |
   // 3. Non-interactive: check Cloud Firestore config/studio for a fresh token
   const cloudToken = await loadTokenFromCloud();
   if (cloudToken) return cloudToken;
-
-  // 4. If admin browser and GIS is available, attempt silent refresh
-  if (isAdminBrowser()) {
-    const silentToken = await requestSilentGisToken();
-    if (silentToken) return silentToken;
-  }
 
   return null;
 };
@@ -284,6 +215,7 @@ export const logout = async () => {
     localStorage.removeItem(GCAL_USER_EMAIL_KEY);
   }
 };
+
 
 
 
