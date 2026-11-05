@@ -1,68 +1,17 @@
 import { Booking } from '../types';
-import { formatIDR, formatDateIndo, saveBooking, getStoredStudioConfig } from './storage';
-import { STUDIO_CONFIG } from '../data/studioData';
-import { saveBookingToCloud } from './firestoreService';
-import { clearStoredToken } from './googleAuth';
-
-const SYNCED_CALENDAR_EVENTS_KEY = 'yay_studio_google_calendar_events_v1';
-
-export interface SyncedCalendarRecord {
-  bookingId: string;
-  calendarEventId: string;
-  htmlLink?: string;
-  syncedAt: string;
-}
-
-export function getSyncedCalendarRecords(): Record<string, SyncedCalendarRecord> {
-  try {
-    const raw = localStorage.getItem(SYNCED_CALENDAR_EVENTS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function saveSyncedCalendarRecord(record: SyncedCalendarRecord): void {
-  const all = getSyncedCalendarRecords();
-  all[record.bookingId] = record;
-  try {
-    localStorage.setItem(SYNCED_CALENDAR_EVENTS_KEY, JSON.stringify(all));
-  } catch {}
-}
+import { formatIDR, getStoredStudioConfig } from './storage';
 
 /**
- * Generates a deterministic valid Google Calendar Event ID (base32hex: [a-v0-9]{5,1024})
- * from a booking ID so Google Calendar strictly enforces at most 1 event per booking.
+ * Calculates start and end ISO strings and Google Calendar Web URL parameter (+08:00 WITA)
  */
-export function getDeterministicCalendarEventId(bookingId: string): string {
-  const raw = `yaystudio-${String(bookingId || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-  let hex = '';
-  for (let i = 0; i < raw.length; i++) {
-    hex += raw.charCodeAt(i).toString(16).padStart(2, '0');
-  }
-  return hex;
-}
-
-/**
- * Checks whether a booking has already been synced to Google Calendar,
- * either in localStorage record, or via persistent Cloud Firestore fields.
- */
-export function isBookingSynced(booking: Booking, syncedMap?: Record<string, SyncedCalendarRecord>): boolean {
-  if (booking.syncedToCalendar || !!booking.calendarEventId) return true;
-  const map = syncedMap || getSyncedCalendarRecords();
-  if (map[booking.id]?.calendarEventId) return true;
-  return false;
-}
-
-/**
- * Calculates start and end ISO strings with Makassar offset (+08:00)
- */
-export function getMakassarStartEndISO(dateStr: string, timeSlot: string, durationMinutes = 30): {
-  startISO: string;
-  endISO: string;
+export function getWitaStartEndStrings(
+  dateStr: string,
+  timeSlot: string,
+  durationMinutes = 30
+): {
   googleWebDatesParam: string;
 } {
-  const [hourStr, minStr] = timeSlot.split(':');
+  const [hourStr, minStr] = (timeSlot || '10:00').split(':');
   const startHour = parseInt(hourStr || '10', 10);
   const startMin = parseInt(minStr || '00', 10);
 
@@ -73,259 +22,61 @@ export function getMakassarStartEndISO(dateStr: string, timeSlot: string, durati
   const endMin = totalEndMinutes % 60;
 
   const pad = (n: number) => String(n).padStart(2, '0');
+  const cleanDate = (dateStr || '').replace(/-/g, '');
+  const googleWebDatesParam = `${cleanDate}T${pad(startHour)}${pad(startMin)}00/${cleanDate}T${pad(
+    endHour
+  )}${pad(endMin)}00`;
 
-  // Format: YYYY-MM-DDTHH:mm:00+08:00
-  const startISO = `${dateStr}T${pad(startHour)}:${pad(startMin)}:00+08:00`;
-  const endISO = `${dateStr}T${pad(endHour)}:${pad(endMin)}:00+08:00`;
-
-  // Format for Google Calendar Web URL (YYYYMMDDTHHmm00)
-  const cleanDate = dateStr.replace(/-/g, '');
-  const googleWebDatesParam = `${cleanDate}T${pad(startHour)}${pad(startMin)}00/${cleanDate}T${pad(endHour)}${pad(endMin)}00`;
-
-  return { startISO, endISO, googleWebDatesParam };
-}
-
-// In-flight sync tracker to prevent duplicate concurrent API calls
-const inFlightCalendarSyncs = new Set<string>();
-
-/**
- * Creates an event on the user's primary Google Calendar via Google Calendar API v3
- */
-export async function createGoogleCalendarEvent(
-  booking: Booking,
-  accessToken: string,
-  durationMinutes = 30
-): Promise<{ success: boolean; eventId?: string; htmlLink?: string; error?: string }> {
-  if (!booking?.id) {
-    return { success: false, error: 'ID booking tidak valid' };
-  }
-
-  const deterministicId = getDeterministicCalendarEventId(booking.id);
-
-  // 1. Prevent concurrent duplicate calls for the same booking
-  if (inFlightCalendarSyncs.has(booking.id)) {
-    return { success: true, eventId: deterministicId };
-  }
-
-  // 2. Prevent duplicate creation if booking was already synced
-  const existingRecords = getSyncedCalendarRecords();
-  if (existingRecords[booking.id]?.calendarEventId || booking.calendarEventId) {
-    const existingId = existingRecords[booking.id]?.calendarEventId || booking.calendarEventId || deterministicId;
-    return {
-      success: true,
-      eventId: existingId,
-      htmlLink: existingRecords[booking.id]?.htmlLink,
-    };
-  }
-
-  inFlightCalendarSyncs.add(booking.id);
-
-  try {
-    const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
-    const { startISO, endISO } = getMakassarStartEndISO(booking.date, booking.timeSlot, effectiveDuration);
-
-    const currentConfig = getStoredStudioConfig();
-    const studioAddress = currentConfig.address || '';
-
-    const description = [
-      `📸 ${currentConfig.name.toUpperCase()}`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `• Kode Reservasi: #${booking.id}`,
-      `• Layanan: ${booking.serviceName}`,
-      `• Tanggal Sesi: ${formatDateIndo(booking.date)}`,
-      `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8)`,
-      `• Warna Backdrop: ${booking.backdrop}`,
-      `• Jumlah Orang: ${booking.peopleCount} Orang`,
-      `• Total Biaya: ${formatIDR(booking.totalPrice)}`,
-      `• Pembayaran: ${booking.paymentNote || 'Pembayaran dapat dilakukan saat di studio'}`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `DATA PEMESAN:`,
-      `• Nama: ${booking.customer.name}`,
-      `• WhatsApp: ${booking.customer.whatsapp}`,
-      `• Email: ${booking.customer.email}`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      ...(studioAddress ? [`LOKASI STUDIO:`, studioAddress] : []),
-      `WhatsApp: +${currentConfig.whatsappNumber || STUDIO_CONFIG.whatsappNumber}`,
-      `*Harap hadir 10 menit sebelum jam sesi dimulai.`
-    ].join('\n');
-
-    const eventPayload = {
-      id: deterministicId,
-      summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`,
-      description,
-      location: studioAddress || undefined,
-      start: {
-        dateTime: startISO,
-        timeZone: 'Asia/Makassar',
-      },
-      end: {
-        dateTime: endISO,
-        timeZone: 'Asia/Makassar',
-      },
-      // Reminders strictly follow device notification and admin phone calendar defaults, with no email reminders
-      reminders: {
-        useDefault: true,
-      },
-    };
-
-    let response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(eventPayload),
-    });
-
-    // If event with this deterministic ID already exists (409 Conflict), update it in place so there is only 1 event
-    if (response.status === 409) {
-      response = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${deterministicId}`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...eventPayload,
-            status: 'confirmed',
-          }),
-        }
-      );
-    }
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        clearStoredToken();
-        return { success: false, error: 'TOKEN_EXPIRED' };
-      }
-      const errorData = await response.json().catch(() => ({}));
-      return { success: false, error: errorData?.error?.message || `Google Calendar API error: ${response.status}` };
-    }
-
-    const data = await response.json();
-    const finalEventId = data.id || deterministicId;
-
-    const record: SyncedCalendarRecord = {
-      bookingId: booking.id,
-      calendarEventId: finalEventId,
-      htmlLink: data.htmlLink,
-      syncedAt: new Date().toISOString(),
-    };
-    saveSyncedCalendarRecord(record);
-
-    // Update the booking object and persist to Firestore + local storage
-    booking.syncedToCalendar = true;
-    booking.calendarEventId = finalEventId;
-    try {
-      saveBooking(booking);
-      saveBookingToCloud(booking).catch((cloudErr) => {
-        console.warn('Booking sync to Firestore note:', cloudErr);
-      });
-    } catch {}
-
-    return {
-      success: true,
-      eventId: finalEventId,
-      htmlLink: data.htmlLink,
-    };
-  } catch (err: any) {
-    console.error('Failed to create calendar event:', err);
-    return {
-      success: false,
-      error: err.message || 'Terjadi kesalahan saat menghubungkan ke Google Calendar.',
-    };
-  } finally {
-    inFlightCalendarSyncs.delete(booking.id);
-  }
+  return { googleWebDatesParam };
 }
 
 /**
- * Generates a direct Google Calendar web template URL
- * Allows users to add the event directly in browser with 1 click
+ * Generates a Google Calendar web template URL for viewing or saving a booking
  */
 export function generateGoogleCalendarWebUrl(booking: Booking, durationMinutes = 30): string {
   const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
-  const { googleWebDatesParam } = getMakassarStartEndISO(booking.date, booking.timeSlot, effectiveDuration);
+  const { googleWebDatesParam } = getWitaStartEndStrings(
+    booking.date,
+    booking.timeSlot,
+    effectiveDuration
+  );
 
-  const title = encodeURIComponent(`Yay Photo Studio: ${booking.serviceName} (#${booking.id})`);
   const currentConfig = getStoredStudioConfig();
   const studioAddress = currentConfig.address || '';
+  const title = encodeURIComponent(
+    `[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`
+  );
 
   const details = encodeURIComponent(
     `Sesi Foto ${currentConfig.name}\n` +
-    `Kode Booking: #${booking.id}\n` +
-    `Layanan: ${booking.serviceName}\n` +
-    `Backdrop: ${booking.backdrop}\n` +
-    `Waktu: ${booking.timeSlot} WITA (GMT+8)\n` +
-    `Pemesan: ${booking.customer.name} (${booking.peopleCount} Orang)\n` +
-    `Total: ${formatIDR(booking.totalPrice)}\n` +
-    `Pembayaran: Dilakukan saat di studio\n` +
-    (studioAddress ? `\nAlamat: ${studioAddress}` : '')
+      `Kode Booking: #${booking.id}\n` +
+      `Layanan: ${booking.serviceName}\n` +
+      `Backdrop: ${booking.backdrop}\n` +
+      `Waktu: ${booking.timeSlot} WITA (GMT+8)\n` +
+      `Pemesan: ${booking.customer.name} (${booking.peopleCount} Orang)\n` +
+      `Total: ${formatIDR(booking.totalPrice)}\n` +
+      `Pembayaran: Dilakukan saat di studio` +
+      (studioAddress ? `\nAlamat: ${studioAddress}` : '')
   );
   const location = encodeURIComponent(studioAddress);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${googleWebDatesParam}&details=${details}&location=${location}&ctz=Asia/Makassar`;
 }
 
-const AUTO_SYNC_KEY = 'yay_studio_auto_sync_gcal_enabled';
-
-export function getAutoSyncEnabled(): boolean {
-  if (typeof window === 'undefined') return true;
-  const val = localStorage.getItem(AUTO_SYNC_KEY);
-  return val === null ? true : val === 'true';
-}
-
-export function setAutoSyncEnabled(enabled: boolean): void {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(AUTO_SYNC_KEY, String(enabled));
-  }
-}
-
 /**
- * Automatically syncs all pending (unsynced) bookings to Google Calendar
- */
-export async function syncAllPendingBookings(
-  bookings: Booking[],
-  accessToken: string,
-  onProgress?: (done: number, total: number) => void
-): Promise<{ successCount: number; totalPending: number; errors: string[] }> {
-  const synced = getSyncedCalendarRecords();
-  const pending = bookings.filter((b) => !isBookingSynced(b, synced) && b.status !== 'cancelled');
-  let successCount = 0;
-  const errors: string[] = [];
-
-  for (let i = 0; i < pending.length; i++) {
-    const booking = pending[i];
-    const res = await createGoogleCalendarEvent(booking, accessToken, booking.durationMinutes || 30);
-    if (res.success) {
-      successCount++;
-    } else {
-      errors.push(`#${booking.id}: ${res.error || 'Gagal sinkron'}`);
-    }
-    if (onProgress) {
-      onProgress(i + 1, pending.length);
-    }
-  }
-
-  return { successCount, totalPending: pending.length, errors };
-}
-
-/**
- * Generates an iCalendar (.ics) file content string
+ * Generates an iCalendar (.ics) file content string for customer download
  */
 export function generateICSContent(booking: Booking, durationMinutes = 30): string {
   const effectiveDuration = booking.durationMinutes || durationMinutes || 30;
   const pad = (n: number) => String(n).padStart(2, '0');
-  const [hourStr, minStr] = booking.timeSlot.split(':');
+  const [hourStr, minStr] = (booking.timeSlot || '10:00').split(':');
   const startHour = parseInt(hourStr || '10', 10);
   const startMin = parseInt(minStr || '00', 10);
   const totalStartMinutes = startHour * 60 + startMin;
   const totalEndMinutes = totalStartMinutes + effectiveDuration;
   const endHour = Math.floor(totalEndMinutes / 60);
   const endMin = totalEndMinutes % 60;
-  const cleanDate = booking.date.replace(/-/g, '');
+  const cleanDate = (booking.date || '').replace(/-/g, '');
   const dtStart = `${cleanDate}T${pad(startHour)}${pad(startMin)}00`;
   const dtEnd = `${cleanDate}T${pad(endHour)}${pad(endMin)}00`;
 
@@ -339,11 +90,11 @@ export function generateICSContent(booking: Booking, durationMinutes = 30): stri
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
-    `UID:yay-photo-${booking.id}@yayphotostudio.com`,
+    `UID:yay-booking-${booking.id}@yayphotostudio.com`,
     `DTSTAMP:${cleanDate}T000000Z`,
     `DTSTART;TZID=Asia/Makassar:${dtStart}`,
     `DTEND;TZID=Asia/Makassar:${dtEnd}`,
-    `SUMMARY:Yay Photo Studio: ${booking.serviceName} (#${booking.id})`,
+    `SUMMARY:[Yay Studio] ${booking.serviceName} - ${booking.customer.name}`,
     `DESCRIPTION:Sesi Foto ${currentConfig.name}\\nKode Booking: #${booking.id}\\nLayanan: ${booking.serviceName}\\nBackdrop: ${booking.backdrop}\\nNama: ${booking.customer.name} (${booking.peopleCount} Orang)\\nTotal: ${formatIDR(booking.totalPrice)}${studioAddress ? `\\nLokasi: ${studioAddress}` : ''}`,
     ...(studioAddress ? [`LOCATION:${studioAddress}`] : []),
     'STATUS:CONFIRMED',
@@ -355,7 +106,7 @@ export function generateICSContent(booking: Booking, durationMinutes = 30): stri
 }
 
 /**
- * Triggers a browser download of the .ics iCalendar file for iOS / Android / Outlook
+ * Triggers a browser download of the .ics iCalendar file for customer receipt
  */
 export function downloadCalendarICSFile(booking: Booking, durationMinutes = 30): void {
   const ics = generateICSContent(booking, durationMinutes);
@@ -369,4 +120,3 @@ export function downloadCalendarICSFile(booking: Booking, durationMinutes = 30):
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-

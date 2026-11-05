@@ -1,19 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { Service, Booking } from '../types';
 import { STUDIO_CONFIG } from '../data/studioData';
-import { generateBookingId, saveBooking, getMakassarDateTime, getStoredStudioConfig } from '../utils/storage';
+import {
+  generateBookingId,
+  saveBooking,
+  getMakassarDateTime,
+  getStoredStudioConfig,
+} from '../utils/storage';
 import { CalendlyDateTimeSelector } from './CalendlyDateTimeSelector';
 import { EnterDetailsForm } from './EnterDetailsForm';
 import { X } from 'lucide-react';
-import {
-  getImmediateFreshAccessToken,
-  getFreshAccessToken,
-  isAdminBrowser,
-} from '../utils/googleAuth';
-import { createGoogleCalendarEvent, getAutoSyncEnabled } from '../utils/googleCalendar';
 import { saveBookingToCloud } from '../utils/firestoreService';
 import { dispatchBookingNotifications } from '../utils/emailService';
-
 
 interface BookingStepModalProps {
   isOpen: boolean;
@@ -31,7 +29,7 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
   // 2 Steps: 1 = Calendly Date & Time, 2 = Enter Details
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
-  // Date and Time Slot based on Makassar (WITA)
+  // Date and Time Slot based on WITA
   const todayMakassar = useMemo(() => getMakassarDateTime().todayDate, []);
   const [selectedDate, setSelectedDate] = useState<string>(todayMakassar);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>('');
@@ -78,58 +76,20 @@ export const BookingStepModal: React.FC<BookingStepModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    // 1. Check for immediate fresh token synchronously while in direct user click gesture
-    let token: string | null = null;
-    if (getAutoSyncEnabled()) {
-      token = getImmediateFreshAccessToken();
-      if (!token && isAdminBrowser()) {
-        try {
-          // If this is the admin's browser and the 1-hour token expired, refresh right inside the click gesture
-          token = await getFreshAccessToken(true);
-        } catch {
-          token = null;
-        }
-      }
-      if (!token) {
-        try {
-          token = await getFreshAccessToken(false);
-        } catch {
-          token = null;
-        }
-      }
-    }
-
+    // 1. Save locally for immediate UI availability
     saveBooking(newBooking);
 
-    // 2. Sync to Google Calendar immediately if token is available
-    if (token) {
-      try {
-        const calRes = await createGoogleCalendarEvent(
-          newBooking,
-          token,
-          service.durationMinutes || 30
-        );
-        if (calRes.success && calRes.eventId) {
-          newBooking.syncedToCalendar = true;
-          newBooking.calendarEventId = calRes.eventId;
-          saveBooking(newBooking);
-        }
-      } catch (calErr) {
-        console.warn('Auto calendar sync note:', calErr);
-      }
-    }
-
-    // 3. Persist to Cloud Firestore across all devices
+    // 2. Persist to Cloud Firestore (also triggers server-side real-time CalDAV calendar insertion)
     saveBookingToCloud(newBooking).catch((err) => {
       console.warn('Cloud booking save note:', err);
     });
 
-    // 4. Prepare and dispatch email notifications (customer confirmation & admin notification)
+    // 3. Dispatch server-side Google Calendar CalDAV insertion + confirmation emails automatically
     try {
       const currentConfig = getStoredStudioConfig();
       dispatchBookingNotifications(newBooking, currentConfig);
     } catch (emailErr) {
-      console.warn('Email dispatch note:', emailErr);
+      console.warn('Email & calendar dispatch note:', emailErr);
     }
 
     onBookingSuccess(newBooking);

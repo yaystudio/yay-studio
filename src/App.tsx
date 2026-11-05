@@ -12,7 +12,7 @@ import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { Service, Booking, StudioConfig } from './types';
 import { getStoredServices, getStoredStudioConfig } from './utils/storage';
-import { subscribeToServices, subscribeToStudioConfig } from './utils/firestoreService';
+import { subscribeToServices, subscribeToStudioConfig, recordPageVisit } from './utils/firestoreService';
 import { testFirestoreConnection } from './utils/firebase';
 
 export default function App() {
@@ -33,9 +33,10 @@ export default function App() {
   // Admin Panel Modal State
   const [isAdminOpen, setIsAdminOpen] = useState(false);
 
-  // Test Firestore connection on boot as mandated by Firestore guidelines
+  // Test Firestore connection and record monthly visitor traffic on boot
   useEffect(() => {
     testFirestoreConnection();
+    recordPageVisit();
   }, []);
 
   // Real-time Cloud Firestore synchronization across all browsers and devices

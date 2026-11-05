@@ -4,7 +4,15 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import nodemailer from 'nodemailer';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot,
+} from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -19,22 +27,243 @@ app.use(express.json());
 const fbApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const db = getFirestore(fbApp, (firebaseConfig as any).firestoreDatabaseId);
 
-function getDeterministicCalendarEventId(bookingId: string): string {
-  const raw = `yaystudio-${String(bookingId || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-  let hex = '';
-  for (let i = 0; i < raw.length; i++) {
-    hex += raw.charCodeAt(i).toString(16).padStart(2, '0');
+// Track in-flight CalDAV operations to avoid duplicate concurrent calls
+const inFlightCalDav = new Set<string>();
+
+/**
+ * Directly inserts or updates a booking event in yayphotostudio@gmail.com's Google Calendar
+ * via Google's official CalDAV interface using the studio's permanent App Password.
+ * Never expires after 1 hour, requires zero browser OAuth login, and uses default phone notifications.
+ */
+async function syncBookingToGoogleCalendarCalDAV(
+  booking: any,
+  studioConfig: any
+): Promise<{ success: boolean; uid: string; status?: number; error?: string }> {
+  const bookingId = String(booking?.id || '').trim();
+  const uid = `yay-booking-${bookingId}@yayphotostudio.com`;
+  if (!bookingId) {
+    return { success: false, uid, error: 'Missing booking ID' };
   }
-  return hex;
+
+  const calendarUser = String(
+    studioConfig?.smtpUser ||
+      studioConfig?.adminEmail ||
+      process.env.SMTP_USER ||
+      'yayphotostudio@gmail.com'
+  ).trim();
+  const calendarPass = String(studioConfig?.smtpPass || process.env.SMTP_PASS || '').trim();
+
+  if (!calendarUser || !calendarPass) {
+    return { success: false, uid, error: 'Missing studio App Password credentials' };
+  }
+
+  const address = studioConfig?.address || '';
+  const studioName = studioConfig?.name || 'Yay Photo Studio';
+  const bookingDuration = Number(booking.durationMinutes) || 30;
+  const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
+  const startH = parseInt(hStr || '10', 10);
+  const startM = parseInt(mStr || '00', 10);
+  const endMinutes = startH * 60 + startM + bookingDuration;
+  const endH = Math.floor(endMinutes / 60);
+  const endM = endMinutes % 60;
+  const cleanD = (booking.date || '').replace(/-/g, '');
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  const dtStart = `${cleanD}T${pad(startH)}${pad(startM)}00`;
+  const dtEnd = `${cleanD}T${pad(endH)}${pad(endM)}00`;
+  const dtNow = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  const descriptionLines = [
+    `📸 ${studioName.toUpperCase()}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `• Kode Reservasi: #${booking.id}`,
+    `• Layanan: ${booking.serviceName || 'Sesi Foto'}`,
+    `• Tanggal Sesi: ${booking.date}`,
+    `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8)`,
+    `• Durasi Sesi: ${bookingDuration} Menit`,
+    `• Warna Backdrop: ${booking.backdrop || '-'}`,
+    `• Jumlah Orang: ${booking.peopleCount || 1} Orang`,
+    `• Total Biaya: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}`,
+    `• Pembayaran: ${booking.paymentNote || 'Pembayaran dapat dilakukan saat di studio'}`,
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+    `DATA PEMESAN:`,
+    `• Nama: ${booking.customer?.name || '-'}`,
+    `• WhatsApp: ${booking.customer?.whatsapp || '-'}`,
+    `• Email: ${booking.customer?.email || '-'}`,
+    ...(booking.customer?.notes ? [`• Catatan: ${booking.customer.notes}`] : []),
+    ...(address ? [`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, `LOKASI STUDIO:`, address] : []),
+  ].join('\\n');
+
+  // Omit VALARM so Google Calendar automatically applies the admin's default phone notification settings (no email reminders)
+  // Omit ATTENDEE so Google Calendar never sends duplicate invitation emails
+  const icsPayload = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Yay Photo Studio//ID',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${dtNow}`,
+    `DTSTART;TZID=Asia/Makassar:${dtStart}`,
+    `DTEND;TZID=Asia/Makassar:${dtEnd}`,
+    `SUMMARY:[Yay Studio] ${booking.serviceName || 'Sesi Foto'} - ${booking.customer?.name || 'Customer'}`,
+    `DESCRIPTION:${descriptionLines}`,
+    ...(address ? [`LOCATION:${address.replace(/,/g, '\\,')}`] : []),
+    'STATUS:CONFIRMED',
+    'TRANSP:OPAQUE',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+
+  const authHeader = Buffer.from(`${calendarUser}:${calendarPass}`).toString('base64');
+  const putUrl = `https://www.google.com/calendar/dav/${encodeURIComponent(
+    calendarUser
+  )}/events/${encodeURIComponent(uid)}.ics`;
+
+  try {
+    const response = await fetch(putUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+        'Content-Type': 'text/calendar; charset=utf-8',
+      },
+      body: icsPayload,
+    });
+
+    if (response.ok || response.status === 201 || response.status === 204) {
+      return { success: true, uid, status: response.status };
+    }
+
+    const errText = await response.text().catch(() => '');
+    console.warn(`CalDAV PUT non-OK (${response.status}):`, errText.slice(0, 200));
+    return {
+      success: false,
+      uid,
+      status: response.status,
+      error: `CalDAV HTTP ${response.status}`,
+    };
+  } catch (err: any) {
+    console.warn('CalDAV PUT network error:', err);
+    return { success: false, uid, error: err?.message || 'CalDAV error' };
+  }
 }
+
+/**
+ * Deletes a booking event from yayphotostudio@gmail.com's Google Calendar via CalDAV
+ * when a booking is cancelled or deleted.
+ */
+async function deleteBookingFromGoogleCalendarCalDAV(
+  bookingId: string,
+  studioConfig: any
+): Promise<boolean> {
+  const cleanId = String(bookingId || '').trim();
+  if (!cleanId) return false;
+
+  const calendarUser = String(
+    studioConfig?.smtpUser ||
+      studioConfig?.adminEmail ||
+      process.env.SMTP_USER ||
+      'yayphotostudio@gmail.com'
+  ).trim();
+  const calendarPass = String(studioConfig?.smtpPass || process.env.SMTP_PASS || '').trim();
+  if (!calendarUser || !calendarPass) return false;
+
+  const uid = `yay-booking-${cleanId}@yayphotostudio.com`;
+  const authHeader = Buffer.from(`${calendarUser}:${calendarPass}`).toString('base64');
+  const delUrl = `https://www.google.com/calendar/dav/${encodeURIComponent(
+    calendarUser
+  )}/events/${encodeURIComponent(uid)}.ics`;
+
+  try {
+    const res = await fetch(delUrl, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Basic ${authHeader}`,
+      },
+    });
+    return res.ok || res.status === 204 || res.status === 404;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Real-time Cloud Firestore listener on the server:
+ * Automatically pushes any new or unsynced booking in Firestore straight to Google Calendar via CalDAV
+ * without needing the Admin Panel to be opened or any manual sync button to be clicked.
+ */
+function startRealtimeCalendarSyncWatcher() {
+  try {
+    onSnapshot(
+      collection(db, 'bookings'),
+      async (snapshot) => {
+        let studioConfig: any = {};
+        try {
+          const cfgSnap = await getDoc(doc(db, 'config', 'studio'));
+          if (cfgSnap.exists()) {
+            studioConfig = cfgSnap.data() || {};
+          }
+        } catch {}
+
+        for (const change of snapshot.docChanges()) {
+          const bookingId = change.doc.id;
+          const data = change.doc.data() as any;
+
+          if (change.type === 'removed' || data?.status === 'cancelled') {
+            await deleteBookingFromGoogleCalendarCalDAV(bookingId, studioConfig);
+            continue;
+          }
+
+          if (
+            (change.type === 'added' || change.type === 'modified') &&
+            data &&
+            data.status !== 'cancelled' &&
+            !data.syncedToCalendar &&
+            !inFlightCalDav.has(bookingId)
+          ) {
+            inFlightCalDav.add(bookingId);
+            try {
+              const calRes = await syncBookingToGoogleCalendarCalDAV(
+                { id: bookingId, ...data },
+                studioConfig
+              );
+              if (calRes.success) {
+                await setDoc(
+                  doc(db, 'bookings', bookingId),
+                  {
+                    syncedToCalendar: true,
+                    calendarEventId: calRes.uid,
+                  },
+                  { merge: true }
+                );
+                console.log(`[Auto-CalDAV] Booking #${bookingId} synced directly to Google Calendar.`);
+              }
+            } catch (err) {
+              console.warn(`[Auto-CalDAV] Error syncing #${bookingId}:`, err);
+            } finally {
+              inFlightCalDav.delete(bookingId);
+            }
+          }
+        }
+      },
+      (err) => {
+        console.warn('Firestore bookings watcher warning:', err);
+      }
+    );
+  } catch (e) {
+    console.warn('Could not start Firestore bookings watcher:', e);
+  }
+}
+
+startRealtimeCalendarSyncWatcher();
 
 // iCal Feed Route for Google Calendar / Apple Calendar
 app.get(['/api/calendar.ics', '/api/calendar', '/calendar.ics'], async (req, res) => {
   try {
     const snap = await getDocs(collection(db, 'bookings'));
     const bookings: any[] = [];
-    snap.forEach((doc) => {
-      bookings.push({ id: doc.id, ...doc.data() });
+    snap.forEach((docSnap) => {
+      bookings.push({ id: docSnap.id, ...docSnap.data() });
     });
 
     const now = new Date();
@@ -128,7 +357,11 @@ app.get(['/api/calendar.ics', '/api/calendar', '/calendar.ics'], async (req, res
 
 // Helper to create nodemailer transporter
 function getTransporter(config: any) {
-  const user = config?.smtpUser || config?.adminEmail || process.env.SMTP_USER || 'yayphotostudio@gmail.com';
+  const user =
+    config?.smtpUser ||
+    config?.adminEmail ||
+    process.env.SMTP_USER ||
+    'yayphotostudio@gmail.com';
   const pass = config?.smtpPass || process.env.SMTP_PASS;
   const host = config?.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = Number(config?.smtpPort || process.env.SMTP_PORT || 465);
@@ -149,7 +382,7 @@ function getTransporter(config: any) {
   });
 }
 
-// Endpoint to dispatch booking notification emails
+// Endpoint to dispatch booking notification emails AND directly insert event into Google Calendar via CalDAV
 app.post('/api/send-booking-email', async (req, res) => {
   try {
     const { booking, config } = req.body;
@@ -171,7 +404,44 @@ app.post('/api/send-booking-email', async (req, res) => {
     const adminEmail = studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
     const address = studioConfig?.address || '';
     const studioName = studioConfig?.name || 'Yay Photo Studio';
-    const senderUser = studioConfig?.smtpUser || studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
+    const senderUser =
+      studioConfig?.smtpUser || studioConfig?.adminEmail || 'yayphotostudio@gmail.com';
+
+    // 1. Directly insert/update the event in yayphotostudio@gmail.com's Google Calendar via CalDAV
+    const calDavResult = await syncBookingToGoogleCalendarCalDAV(booking, studioConfig);
+
+    // 2. Persist synced status to Firestore
+    if (booking.id) {
+      try {
+        await setDoc(
+          doc(db, 'bookings', booking.id),
+          {
+            ...booking,
+            syncedToCalendar: true,
+            calendarEventId: calDavResult.uid,
+          },
+          { merge: true }
+        );
+      } catch (dbErr) {
+        console.warn('Could not update booking sync flag in Firestore:', dbErr);
+      }
+    }
+
+    const transporter = getTransporter(studioConfig);
+
+    if (!transporter) {
+      return res.status(200).json({
+        success: true,
+        delivered: false,
+        syncedToCalendar: calDavResult.success,
+        calendarEventId: calDavResult.uid,
+        notConfigured: true,
+        adminEmail,
+        message: 'Kredensial SMTP belum diisi di Pengaturan Email Admin Studio.',
+      });
+    }
+
+    const fromAddress = studioConfig?.smtpFrom || `"${studioName}" <${senderUser}>`;
 
     const bookingDuration = Number(booking.durationMinutes) || 30;
     const [hStr, mStr] = (booking.timeSlot || '10:00').split(':');
@@ -181,91 +451,8 @@ app.post('/api/send-booking-email', async (req, res) => {
     const endH = Math.floor(endMinutes / 60);
     const endM = endMinutes % 60;
     const cleanD = (booking.date || '').replace(/-/g, '');
-    const pad = (n: number) => String(n).padStart(2, '0');
 
-    // Server-side automatic Google Calendar API sync if cloud token is fresh and booking not yet synced
-    const cloudToken = studioConfig?.googleAccessToken;
-    const cloudExpiry = Number(studioConfig?.googleTokenExpiry || 0);
-    if (
-      booking.id &&
-      !booking.syncedToCalendar &&
-      cloudToken &&
-      cloudToken !== 'gcal_authenticated' &&
-      cloudExpiry > Date.now()
-    ) {
-      try {
-        const deterministicId = getDeterministicCalendarEventId(booking.id);
-        const startISO = `${booking.date}T${pad(startH)}:${pad(startM)}:00+08:00`;
-        const endISO = `${booking.date}T${pad(endH)}:${pad(endM)}:00+08:00`;
-        const gcalPayload = {
-          id: deterministicId,
-          summary: `[Yay Studio] ${booking.serviceName} - ${booking.customer?.name}`,
-          description: [
-            `📸 ${studioName.toUpperCase()}`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `• Kode Reservasi: #${booking.id}`,
-            `• Layanan: ${booking.serviceName}`,
-            `• Tanggal Sesi: ${booking.date}`,
-            `• Waktu / Jam: ${booking.timeSlot} WITA (GMT+8)`,
-            `• Warna Backdrop: ${booking.backdrop || '-'}`,
-            `• Jumlah Orang: ${booking.peopleCount} Orang`,
-            `• Total Biaya: Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}`,
-            `• Pembayaran: ${booking.paymentNote || 'Pembayaran dapat dilakukan saat di studio'}`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `DATA PEMESAN:`,
-            `• Nama: ${booking.customer?.name || '-'}`,
-            `• WhatsApp: ${booking.customer?.whatsapp || '-'}`,
-            `• Email: ${booking.customer?.email || '-'}`,
-            ...(address ? [`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, `LOKASI STUDIO:`, address] : []),
-          ].join('\n'),
-          location: address || undefined,
-          start: { dateTime: startISO, timeZone: 'Asia/Makassar' },
-          end: { dateTime: endISO, timeZone: 'Asia/Makassar' },
-          reminders: { useDefault: true },
-        };
-
-        const gcalRes = await fetch(
-          'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${cloudToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(gcalPayload),
-          }
-        );
-
-        if (gcalRes.ok || gcalRes.status === 409) {
-          await setDoc(
-            doc(db, 'bookings', booking.id),
-            {
-              syncedToCalendar: true,
-              calendarEventId: deterministicId,
-            },
-            { merge: true }
-          );
-        }
-      } catch (gcalErr) {
-        console.warn('Server-side Google Calendar sync note:', gcalErr);
-      }
-    }
-
-    const transporter = getTransporter(studioConfig);
-
-    if (!transporter) {
-      console.log(`[Email Dispatch Log] SMTP not configured. Booking #${booking.id} notification logged for: ${adminEmail}`);
-      return res.status(200).json({
-        success: false,
-        notConfigured: true,
-        adminEmail,
-        message: 'Kredensial SMTP belum diisi di Pengaturan Email Admin Studio. Notifikasi dapat dibuka langsung via Gmail.',
-      });
-    }
-
-    const fromAddress = studioConfig?.smtpFrom || `"${studioName}" <${senderUser}>`;
-
-    // 1. Admin Email HTML
+    // 3. Admin Email HTML (No icalEvent attachment needed because CalDAV already wrote directly to Google Calendar)
     const adminSubject = `[Booking Baru Masuk] ${booking.serviceName} - ${booking.customer?.name} (#${booking.id})`;
     const adminHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e5e5; border-radius: 16px; overflow: hidden; color: #171717;">
@@ -275,8 +462,8 @@ app.post('/api/send-booking-email', async (req, res) => {
         </div>
         <div style="padding: 28px 24px;">
           <div style="background: #f5f5f5; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-            <p style="margin: 0; font-size: 15px; font-weight: 700; color: #171717;">Booking Baru Diterima!</p>
-            <p style="margin: 4px 0 0 0; font-size: 13px; color: #525252;">Pelanggan baru saja menyelesaikan reservasi melalui website studio.</p>
+            <p style="margin: 0; font-size: 15px; font-weight: 700; color: #171717;">Booking Baru Diterima & Otomatis Masuk ke Google Calendar!</p>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #525252;">Jadwal sesi foto ini telah otomatis ditambahkan ke Google Calendar (${adminEmail}).</p>
           </div>
 
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
@@ -287,7 +474,7 @@ app.post('/api/send-booking-email', async (req, res) => {
             ${booking.customer?.notes ? `<tr><td style="padding: 8px 0; color: #737373;">Catatan:</td><td style="padding: 8px 0; font-style: italic;">${booking.customer.notes}</td></tr>` : ''}
             <tr style="border-top: 1px dashed #e5e5e5;"><td style="padding: 12px 0 8px 0; color: #737373;">Layanan:</td><td style="padding: 12px 0 8px 0; font-weight: 700;">${booking.serviceName}</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Tanggal Sesi:</td><td style="padding: 8px 0; font-weight: 700;">${booking.date}</td></tr>
-            <tr><td style="padding: 8px 0; color: #737373;">Jam Sesi:</td><td style="padding: 8px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA</td></tr>
+            <tr><td style="padding: 8px 0; color: #737373;">Jam Sesi:</td><td style="padding: 8px 0; font-weight: 700; color: #2563eb;">${booking.timeSlot} WITA (${bookingDuration} Menit)</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Warna Backdrop:</td><td style="padding: 8px 0;">${booking.backdrop || '-'}</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Jumlah Orang:</td><td style="padding: 8px 0;">${booking.peopleCount} Orang</td></tr>
             <tr><td style="padding: 8px 0; color: #737373;">Total Biaya:</td><td style="padding: 8px 0; font-weight: 800; font-size: 15px; color: #16a34a;">Rp ${Number(booking.totalPrice || 0).toLocaleString('id-ID')}</td></tr>
@@ -303,7 +490,6 @@ app.post('/api/send-booking-email', async (req, res) => {
       </div>
     `;
 
-    // Send to Admin without icalEvent REQUEST so there is never a duplicate event in Google Calendar
     const sendAdminPromise = transporter.sendMail({
       from: fromAddress,
       to: adminEmail,
@@ -311,7 +497,7 @@ app.post('/api/send-booking-email', async (req, res) => {
       html: adminHtml,
     });
 
-    // Send single confirmation to Customer without separate RSVP invitation so customer receives ONLY 1 email
+    // 4. Send single confirmation email to Customer
     let sendCustomerPromise: Promise<any> = Promise.resolve(null);
     if (booking.customer?.email) {
       const gcalDates = `${cleanD}T${String(startH).padStart(2, '0')}${String(startM).padStart(2, '0')}00/${cleanD}T${String(endH).padStart(2, '0')}${String(endM).padStart(2, '0')}00`;
@@ -366,15 +552,17 @@ app.post('/api/send-booking-email', async (req, res) => {
         </div>
       `;
 
-      sendCustomerPromise = transporter.sendMail({
-        from: fromAddress,
-        to: booking.customer.email,
-        subject: customerSubject,
-        html: customerHtml,
-      }).catch((e) => {
-        console.warn('Customer confirmation email send warning:', e);
-        return null;
-      });
+      sendCustomerPromise = transporter
+        .sendMail({
+          from: fromAddress,
+          to: booking.customer.email,
+          subject: customerSubject,
+          html: customerHtml,
+        })
+        .catch((e) => {
+          console.warn('Customer confirmation email send warning:', e);
+          return null;
+        });
     }
 
     await Promise.all([sendAdminPromise, sendCustomerPromise]);
@@ -382,16 +570,27 @@ app.post('/api/send-booking-email', async (req, res) => {
     return res.status(200).json({
       success: true,
       delivered: true,
+      syncedToCalendar: calDavResult.success,
+      calendarEventId: calDavResult.uid,
       adminEmail,
-      message: `Email notifikasi booking berhasil dikirim ke ${adminEmail}`,
+      message: `Jadwal otomatis masuk ke Google Calendar (${adminEmail}) & email terkirim`,
     });
   } catch (err: any) {
     console.error('Error sending booking emails:', err);
     let errMsg = err.message || 'Gagal mengirim email';
-    if (errMsg.includes('534') || errMsg.includes('Application-specific password') || errMsg.includes('InvalidSecondFactor')) {
-      errMsg = 'Google mewajibkan Sandi Aplikasi (App Password 16 karakter). Kunjungi myaccount.google.com/apppasswords untuk membuat sandi aplikasi 16 karakter.';
-    } else if (errMsg.includes('Invalid login') || errMsg.includes('Username and Password not accepted')) {
-      errMsg = 'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan menggunakan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
+    if (
+      errMsg.includes('534') ||
+      errMsg.includes('Application-specific password') ||
+      errMsg.includes('InvalidSecondFactor')
+    ) {
+      errMsg =
+        'Google mewajibkan Sandi Aplikasi (App Password 16 karakter). Kunjungi myaccount.google.com/apppasswords untuk membuat sandi aplikasi 16 karakter.';
+    } else if (
+      errMsg.includes('Invalid login') ||
+      errMsg.includes('Username and Password not accepted')
+    ) {
+      errMsg =
+        'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan menggunakan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
     }
     return res.status(500).json({
       success: false,
@@ -400,7 +599,7 @@ app.post('/api/send-booking-email', async (req, res) => {
   }
 });
 
-// Route to test SMTP Configuration
+// Route to test SMTP & Google Calendar CalDAV Connection
 app.post('/api/test-smtp', async (req, res) => {
   try {
     const { smtpHost, smtpPort, smtpUser, smtpPass, recipient } = req.body;
@@ -423,7 +622,8 @@ app.post('/api/test-smtp', async (req, res) => {
     if (!pass) {
       return res.status(400).json({
         success: false,
-        error: 'Sandi Aplikasi Gmail (16 karakter) belum diisi. Masukkan 16 karakter dari myaccount.google.com/apppasswords.',
+        error:
+          'Sandi Aplikasi Gmail (16 karakter) belum diisi. Masukkan 16 karakter dari myaccount.google.com/apppasswords.',
       });
     }
 
@@ -443,7 +643,6 @@ app.post('/api/test-smtp', async (req, res) => {
 
     await testTransporter.verify();
 
-    // Read studio address dynamically
     let studioAddr = '';
     try {
       const configDoc = await getDoc(doc(db, 'config', 'studio'));
@@ -453,15 +652,15 @@ app.post('/api/test-smtp', async (req, res) => {
     } catch {}
 
     await testTransporter.sendMail({
-      from: `"Yay Photo Studio Test" <${String(smtpUser).trim()}>`,
+      from: `"Yay Photo Studio Test" <${String(user).trim()}>`,
       to: targetRecipient,
-      subject: '[Tes Sistem] Koneksi Email Yay Photo Studio Berhasil!',
+      subject: '[Tes Sistem] Koneksi Email & Kalender Yay Photo Studio Berhasil!',
       html: `
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <h2 style="color: #059669; margin-top: 0;">🎉 Koneksi Email Otomatis Berhasil!</h2>
+          <h2 style="color: #059669; margin-top: 0;">🎉 Koneksi Email & Google Calendar Otomatis Berhasil!</h2>
           <p>Halo Admin Yay Photo Studio,</p>
-          <p>Ini adalah pesan konfirmasi uji coba. Server email studio Anda telah terhubung dengan sempurna ke <strong>${targetRecipient}</strong>.</p>
-          <p>Mulai sekarang, setiap ada pelanggan yang melakukan reservasi baru di website, email pemberitahuan otomatis akan langsung masuk ke inbox Anda dan inbox customer tanpa perlu menekan tombol apapun.</p>
+          <p>Ini adalah pesan konfirmasi uji coba. Server studio Anda telah terhubung secara permanen ke <strong>${targetRecipient}</strong>.</p>
+          <p>Setiap reservasi pelanggan akan langsung masuk ke Google Calendar Anda dan mengirim email konfirmasi secara otomatis tanpa perlu login ulang atau sinkronisasi manual.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
           <p style="font-size: 12px; color: #64748b; margin: 0;">Yay Photo Studio${studioAddr ? ` · ${studioAddr}` : ''}</p>
         </div>
@@ -470,15 +669,24 @@ app.post('/api/test-smtp', async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Email uji coba berhasil dikirim ke ${targetRecipient}! Silakan cek kotak masuk email Anda.`,
+      message: `Koneksi Email & Google Calendar berhasil diuji ke ${targetRecipient}!`,
     });
   } catch (err: any) {
     console.error('SMTP test failure:', err);
     let errMsg = err.message || 'Gagal mengirim email uji coba.';
-    if (errMsg.includes('534') || errMsg.includes('Application-specific password') || errMsg.includes('InvalidSecondFactor')) {
-      errMsg = 'Google mewajibkan "Sandi Aplikasi" (App Password 16 karakter), bukan password akun Gmail biasa. Silakan buat sandi aplikasi di myaccount.google.com/apppasswords.';
-    } else if (errMsg.includes('Invalid login') || errMsg.includes('Username and Password not accepted')) {
-      errMsg = 'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan Anda memasukkan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
+    if (
+      errMsg.includes('534') ||
+      errMsg.includes('Application-specific password') ||
+      errMsg.includes('InvalidSecondFactor')
+    ) {
+      errMsg =
+        'Google mewajibkan "Sandi Aplikasi" (App Password 16 karakter), bukan password akun Gmail biasa. Silakan buat sandi aplikasi di myaccount.google.com/apppasswords.';
+    } else if (
+      errMsg.includes('Invalid login') ||
+      errMsg.includes('Username and Password not accepted')
+    ) {
+      errMsg =
+        'Email akun atau Sandi Aplikasi Gmail ditolak. Pastikan Anda memasukkan Sandi Aplikasi 16 karakter dari myaccount.google.com/apppasswords.';
     }
     return res.status(400).json({
       success: false,

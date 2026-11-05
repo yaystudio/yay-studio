@@ -98,3 +98,15 @@ export interface StudioConfig {
   googleUserEmail?: string;
 }
 
+export interface TrafficStats {
+  currentMonth: string; // YYYY-MM (WITA)
+  monthlyVisits: number;
+  uniqueVisitors: number;
+  todayDate: string; // YYYY-MM-DD (WITA)
+  todayVisits: number;
+  lastResetAt: string;
+  lastVisitAt: string;
+  monthlyHistory?: Record<string, { visits: number; uniqueVisitors: number }>;
+}
+
+

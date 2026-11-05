@@ -8,8 +8,8 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Service, StudioConfig, Booking } from '../types';
-import { getStoredServices, getStoredStudioConfig, getStoredBookings } from './storage';
+import { Service, StudioConfig, Booking, TrafficStats } from '../types';
+import { getStoredServices, getStoredStudioConfig, getStoredBookings, getMakassarDateTime } from './storage';
 import { SERVICES, STUDIO_CONFIG } from '../data/studioData';
 
 export enum OperationType {
@@ -306,3 +306,288 @@ export async function deleteBookingFromCloud(bookingId: string): Promise<void> {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+const TRAFFIC_LOCAL_KEY = 'yay_studio_traffic_v1';
+const UNIQUE_VISITOR_PREFIX = 'yay_studio_unique_visitor_';
+let lastVisitRecordedTimestamp = 0;
+
+const MONTH_NAMES_INDO = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
+export function formatMonthYearIndo(monthKey: string): string {
+  const [y, m] = (monthKey || '').split('-');
+  const monthIdx = parseInt(m || '1', 10) - 1;
+  const monthName = MONTH_NAMES_INDO[monthIdx] || MONTH_NAMES_INDO[0];
+  return `${monthName} ${y || new Date().getFullYear()}`;
+}
+
+export function getNextMonthResetIndo(monthKey: string): string {
+  const [yStr, mStr] = (monthKey || '').split('-');
+  let year = parseInt(yStr || String(new Date().getFullYear()), 10);
+  let month = parseInt(mStr || '1', 10); // 1..12
+  if (month >= 12) {
+    month = 1;
+    year += 1;
+  } else {
+    month += 1;
+  }
+  const monthName = MONTH_NAMES_INDO[month - 1] || 'Januari';
+  return `1 ${monthName} ${year}, 00:00 WITA`;
+}
+
+export function getStoredTrafficStats(): TrafficStats {
+  const { todayDate } = getMakassarDateTime();
+  const currentMonth = todayDate.slice(0, 7);
+  const nowIso = new Date().toISOString();
+
+  const defaultStats: TrafficStats = {
+    currentMonth,
+    monthlyVisits: 1,
+    uniqueVisitors: 1,
+    todayDate,
+    todayVisits: 1,
+    lastResetAt: nowIso,
+    lastVisitAt: nowIso,
+    monthlyHistory: {},
+  };
+
+  if (typeof window === 'undefined') return defaultStats;
+
+  try {
+    const raw = localStorage.getItem(TRAFFIC_LOCAL_KEY);
+    if (!raw) return defaultStats;
+    const parsed = JSON.parse(raw) as TrafficStats;
+    if (parsed.currentMonth !== currentMonth) {
+      const history = { ...(parsed.monthlyHistory || {}) };
+      if (parsed.currentMonth) {
+        history[parsed.currentMonth] = {
+          visits: Number(parsed.monthlyVisits || 0),
+          uniqueVisitors: Number(parsed.uniqueVisitors || 0),
+        };
+      }
+      return {
+        currentMonth,
+        monthlyVisits: 0,
+        uniqueVisitors: 0,
+        todayDate,
+        todayVisits: 0,
+        lastResetAt: nowIso,
+        lastVisitAt: nowIso,
+        monthlyHistory: history,
+      };
+    }
+    if (parsed.todayDate !== todayDate) {
+      return {
+        ...parsed,
+        todayDate,
+        todayVisits: 0,
+      };
+    }
+    return parsed;
+  } catch {
+    return defaultStats;
+  }
+}
+
+/**
+ * Records a page visit and automatically resets monthly counters when a new month starts (WITA).
+ */
+export async function recordPageVisit(): Promise<void> {
+  // Prevent React StrictMode double invocation within 2 seconds
+  if (Date.now() - lastVisitRecordedTimestamp < 2000) return;
+  lastVisitRecordedTimestamp = Date.now();
+
+  const { todayDate } = getMakassarDateTime();
+  const currentMonth = todayDate.slice(0, 7); // YYYY-MM
+  const nowIso = new Date().toISOString();
+
+  const uniqueKey = `${UNIQUE_VISITOR_PREFIX}${currentMonth}`;
+  let isNewUniqueVisitor = false;
+  if (typeof window !== 'undefined') {
+    if (!localStorage.getItem(uniqueKey)) {
+      isNewUniqueVisitor = true;
+      try {
+        localStorage.setItem(uniqueKey, nowIso);
+      } catch {}
+    }
+  }
+
+  const trafficRef = doc(db, 'config', 'traffic');
+
+  try {
+    const snap = await getDoc(trafficRef);
+    let updatedStats: TrafficStats;
+
+    if (!snap.exists()) {
+      updatedStats = {
+        currentMonth,
+        monthlyVisits: 1,
+        uniqueVisitors: 1,
+        todayDate,
+        todayVisits: 1,
+        lastResetAt: nowIso,
+        lastVisitAt: nowIso,
+        monthlyHistory: {},
+      };
+    } else {
+      const data = snap.data() as TrafficStats;
+      if (data.currentMonth !== currentMonth) {
+        // New month started! Archive previous month and automatically reset monthly counters
+        const history = { ...(data.monthlyHistory || {}) };
+        if (data.currentMonth) {
+          history[data.currentMonth] = {
+            visits: Number(data.monthlyVisits || 0),
+            uniqueVisitors: Number(data.uniqueVisitors || 0),
+          };
+        }
+        updatedStats = {
+          currentMonth,
+          monthlyVisits: 1,
+          uniqueVisitors: 1,
+          todayDate,
+          todayVisits: 1,
+          lastResetAt: nowIso,
+          lastVisitAt: nowIso,
+          monthlyHistory: history,
+        };
+      } else {
+        const isSameDay = data.todayDate === todayDate;
+        const nextMonthlyVisits = Number(data.monthlyVisits || 0) + 1;
+        const nextUniqueVisitors =
+          Number(data.uniqueVisitors || 0) + (isNewUniqueVisitor ? 1 : 0);
+        const nextTodayVisits = isSameDay ? Number(data.todayVisits || 0) + 1 : 1;
+
+        updatedStats = {
+          ...data,
+          currentMonth,
+          monthlyVisits: nextMonthlyVisits,
+          uniqueVisitors: Math.max(1, nextUniqueVisitors),
+          todayDate,
+          todayVisits: nextTodayVisits,
+          lastResetAt: data.lastResetAt || nowIso,
+          lastVisitAt: nowIso,
+        };
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(TRAFFIC_LOCAL_KEY, JSON.stringify(updatedStats));
+      } catch {}
+    }
+
+    await setDoc(trafficRef, cleanForFirestore(updatedStats));
+  } catch (err) {
+    console.warn('Traffic counter update note:', err);
+  }
+}
+
+/**
+ * Real-time subscription to monthly website traffic stats (`config/traffic`).
+ * Automatically resets the counter if the month changes while open.
+ */
+export function subscribeToTrafficStats(
+  onTrafficUpdate: (stats: TrafficStats) => void
+): () => void {
+  const trafficRef = doc(db, 'config', 'traffic');
+
+  return onSnapshot(
+    trafficRef,
+    async (snapshot) => {
+      const { todayDate } = getMakassarDateTime();
+      const currentMonth = todayDate.slice(0, 7);
+      const nowIso = new Date().toISOString();
+
+      if (!snapshot.exists()) {
+        const initial = getStoredTrafficStats();
+        onTrafficUpdate(initial);
+        return;
+      }
+
+      const data = snapshot.data() as TrafficStats;
+      if (data.currentMonth !== currentMonth) {
+        // Month rolled over! Automatically reset monthly counter
+        const history = { ...(data.monthlyHistory || {}) };
+        if (data.currentMonth) {
+          history[data.currentMonth] = {
+            visits: Number(data.monthlyVisits || 0),
+            uniqueVisitors: Number(data.uniqueVisitors || 0),
+          };
+        }
+        const resetData: TrafficStats = {
+          currentMonth,
+          monthlyVisits: 0,
+          uniqueVisitors: 0,
+          todayDate,
+          todayVisits: 0,
+          lastResetAt: nowIso,
+          lastVisitAt: data.lastVisitAt || nowIso,
+          monthlyHistory: history,
+        };
+        try {
+          await setDoc(trafficRef, cleanForFirestore(resetData));
+        } catch {}
+        onTrafficUpdate(resetData);
+      } else {
+        const normalized: TrafficStats = {
+          ...data,
+          todayDate,
+          todayVisits: data.todayDate === todayDate ? Number(data.todayVisits || 0) : 0,
+        };
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(TRAFFIC_LOCAL_KEY, JSON.stringify(normalized));
+          } catch {}
+        }
+        onTrafficUpdate(normalized);
+      }
+    },
+    (err) => {
+      console.warn('Traffic subscription note:', err);
+    }
+  );
+}
+
+/**
+ * Manually resets the current month's visitor traffic counter to 0.
+ */
+export async function resetCurrentMonthTraffic(): Promise<TrafficStats> {
+  const { todayDate } = getMakassarDateTime();
+  const currentMonth = todayDate.slice(0, 7);
+  const nowIso = new Date().toISOString();
+  const current = getStoredTrafficStats();
+
+  const resetData: TrafficStats = {
+    currentMonth,
+    monthlyVisits: 0,
+    uniqueVisitors: 0,
+    todayDate,
+    todayVisits: 0,
+    lastResetAt: nowIso,
+    lastVisitAt: nowIso,
+    monthlyHistory: current.monthlyHistory || {},
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(TRAFFIC_LOCAL_KEY, JSON.stringify(resetData));
+      localStorage.removeItem(`${UNIQUE_VISITOR_PREFIX}${currentMonth}`);
+    } catch {}
+  }
+
+  await setDoc(doc(db, 'config', 'traffic'), cleanForFirestore(resetData));
+  return resetData;
+}
+

@@ -62,6 +62,21 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "serviceName", "date", "timeSlot", "peopleCount", "totalPrice"]
+    },
+    "TrafficStats": {
+      "title": "TrafficStats",
+      "description": "Monthly website visitor traffic counter that resets automatically every month",
+      "type": "object",
+      "properties": {
+        "currentMonth": { "type": "string" },
+        "monthlyVisits": { "type": "number" },
+        "uniqueVisitors": { "type": "number" },
+        "todayDate": { "type": "string" },
+        "todayVisits": { "type": "number" },
+        "lastResetAt": { "type": "string" },
+        "lastVisitAt": { "type": "string" }
+      },
+      "required": ["currentMonth", "monthlyVisits", "uniqueVisitors"]
     }
   },
   "firestore": {
@@ -72,6 +87,10 @@
     "/config/studio": {
       "schema": "StudioConfig",
       "description": "Studio global configuration details"
+    },
+    "/config/traffic": {
+      "schema": "TrafficStats",
+      "description": "Monthly website visitor traffic statistics, automatically reset each month"
     },
     "/bookings/{bookingId}": {
       "schema": "Booking",
