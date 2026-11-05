@@ -217,6 +217,10 @@ function startRealtimeCalendarSyncWatcher() {
           if (
             (change.type === 'added' || change.type === 'modified') &&
             data &&
+            data.customer?.name &&
+            data.serviceName &&
+            data.date &&
+            data.timeSlot &&
             data.status !== 'cancelled' &&
             !data.syncedToCalendar &&
             !inFlightCalDav.has(bookingId)
@@ -228,14 +232,17 @@ function startRealtimeCalendarSyncWatcher() {
                 studioConfig
               );
               if (calRes.success) {
-                await setDoc(
-                  doc(db, 'bookings', bookingId),
-                  {
-                    syncedToCalendar: true,
-                    calendarEventId: calRes.uid,
-                  },
-                  { merge: true }
-                );
+                const stillExists = await getDoc(doc(db, 'bookings', bookingId));
+                if (stillExists.exists() && stillExists.data()?.customer?.name) {
+                  await setDoc(
+                    doc(db, 'bookings', bookingId),
+                    {
+                      syncedToCalendar: true,
+                      calendarEventId: calRes.uid,
+                    },
+                    { merge: true }
+                  );
+                }
                 console.log(`[Auto-CalDAV] Booking #${bookingId} synced directly to Google Calendar.`);
               }
             } catch (err) {

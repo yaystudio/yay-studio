@@ -522,13 +522,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     }
   };
 
-  // Filtered Bookings
+  // Filtered Bookings (strictly guard against any incomplete or stub objects)
   const filteredBookings = bookings.filter((b) => {
+    if (!b || !b.customer || typeof b.customer.name !== 'string') return false;
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      b.customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.customer.whatsapp.includes(searchQuery) ||
-      b.serviceName.toLowerCase().includes(searchQuery.toLowerCase());
+      (b.customer.name || '').toLowerCase().includes(q) ||
+      (b.id || '').toLowerCase().includes(q) ||
+      (b.customer.whatsapp || '').includes(searchQuery) ||
+      (b.serviceName || '').toLowerCase().includes(q);
 
     const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -1530,7 +1532,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                      Daftar Jadwal Sesi Foto di Google Calendar ({bookings.filter((b) => b.status !== 'cancelled').length} Jadwal Aktif):
+                      Daftar Jadwal Sesi Foto di Google Calendar ({bookings.filter((b) => b && b.customer && b.status !== 'cancelled').length} Jadwal Aktif):
                     </span>
                     <span className="text-[11px] text-neutral-500 font-mono">
                       Zona Waktu: WITA (GMT+8)
@@ -1539,7 +1541,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
                   <div className="space-y-2.5">
                     {bookings
-                      .filter((b) => b.status !== 'cancelled')
+                      .filter((b) => b && b.customer && b.status !== 'cancelled')
                       .map((b) => (
                         <div
                           key={b.id}

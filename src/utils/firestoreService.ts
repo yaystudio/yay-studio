@@ -237,10 +237,27 @@ export function subscribeToBookings(
         } else {
           const loaded: Booking[] = [];
           snapshot.forEach((d) => {
-            loaded.push(d.data() as Booking);
+            const data = d.data() as Booking;
+            if (
+              data &&
+              data.id &&
+              data.customer &&
+              typeof data.customer.name === 'string' &&
+              data.serviceName &&
+              data.date &&
+              data.timeSlot
+            ) {
+              loaded.push(data);
+            } else {
+              // Automatically remove any orphan stub document from Firestore
+              deleteDoc(doc(db, 'bookings', d.id)).catch(() => {});
+            }
           });
           // Sort newest first
-          loaded.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          loaded.sort(
+            (a, b) =>
+              new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          );
           onBookingsUpdate(loaded);
           try {
             localStorage.setItem('yay_studio_bookings_v3', JSON.stringify(loaded));

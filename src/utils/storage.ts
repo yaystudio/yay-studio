@@ -171,7 +171,27 @@ export function getStoredBookings(): Booking[] {
       localStorage.setItem(BOOKINGS_KEY, JSON.stringify(INITIAL_BOOKINGS));
       return INITIAL_BOOKINGS;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return INITIAL_BOOKINGS;
+    }
+    const valid = parsed.filter(
+      (b: any) =>
+        b &&
+        typeof b === 'object' &&
+        typeof b.id === 'string' &&
+        b.customer &&
+        typeof b.customer.name === 'string' &&
+        typeof b.serviceName === 'string' &&
+        typeof b.date === 'string' &&
+        typeof b.timeSlot === 'string'
+    );
+    if (valid.length !== parsed.length) {
+      try {
+        localStorage.setItem(BOOKINGS_KEY, JSON.stringify(valid));
+      } catch {}
+    }
+    return valid;
   } catch (e) {
     console.error('Failed to load bookings from localStorage', e);
     return INITIAL_BOOKINGS;

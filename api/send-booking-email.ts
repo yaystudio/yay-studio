@@ -170,8 +170,8 @@ export default async function handler(req: Request, res: Response) {
     // 1. Directly insert/update the event in yayphotostudio@gmail.com's Google Calendar via CalDAV
     const calDavResult = await syncBookingToGoogleCalendarCalDAV(booking, studioConfig);
 
-    // 2. Always persist booking & synced flag in Cloud Firestore
-    if (booking.id) {
+    // 2. Always persist booking & synced flag in Cloud Firestore (only if complete booking payload)
+    if (booking.id && booking.customer?.name && booking.serviceName) {
       try {
         await setDoc(
           doc(db, 'bookings', booking.id),
