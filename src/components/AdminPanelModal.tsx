@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import { Booking, BookingStatus, BlockedSlot, Service, StudioConfig, BackdropOption, TrafficStats } from '../types';
+import {
+  Booking,
+  BookingStatus,
+  BlockedSlot,
+  Service,
+  StudioConfig,
+  BackdropOption,
+  TrafficStats,
+  ExternalCalendarBlock,
+} from '../types';
 import { BACKDROP_OPTIONS, SERVICES } from '../data/studioData';
 import {
   getStoredBookings,
@@ -7,6 +16,8 @@ import {
   updateBookingStatus,
   deleteBooking,
   getStoredBlockedSlots,
+  getStoredExternalCalendarBlocks,
+  getMakassarDateTime,
   getStoredServices,
   updateService,
   getStoredStudioConfig,
@@ -85,6 +96,8 @@ import {
   resetCurrentMonthTraffic,
   formatMonthYearIndo,
   getNextMonthResetIndo,
+  subscribeToExternalCalendarBlocks,
+  refreshExternalCalendarBlocks,
 } from '../utils/firestoreService';
 import { compressServiceImage } from '../utils/imageCompressor';
 
@@ -121,6 +134,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [studioConfig, setStudioConfig] = useState<StudioConfig>(getStoredStudioConfig());
   const [trafficStats, setTrafficStats] = useState<TrafficStats>(getStoredTrafficStats());
   const [isResettingTraffic, setIsResettingTraffic] = useState<boolean>(false);
+  const [externalCalendarBlocks, setExternalCalendarBlocks] = useState<ExternalCalendarBlock[]>(
+    getStoredExternalCalendarBlocks()
+  );
+  const [isRefreshingExternalCal, setIsRefreshingExternalCal] = useState<boolean>(false);
 
   // Editing service state
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
@@ -278,11 +295,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     let unsubBookings: (() => void) | undefined;
     let unsubServices: (() => void) | undefined;
     let unsubTraffic: (() => void) | undefined;
+    let unsubExternalCal: (() => void) | undefined;
     if (isOpen) {
       const svcs = getStoredServices();
       const bks = getStoredBookings();
       setBookings(bks);
       setBlockedSlots(getStoredBlockedSlots());
+      setExternalCalendarBlocks(getStoredExternalCalendarBlocks());
       setServices(svcs);
       setStudioConfig(getStoredStudioConfig());
       setTrafficStats(getStoredTrafficStats());
@@ -313,13 +332,38 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           setTrafficStats(cloudTraffic);
         }
       });
+
+      // Real-time external smartphone Google Calendar blocks subscription
+      unsubExternalCal = subscribeToExternalCalendarBlocks((blocks) => {
+        setExternalCalendarBlocks(blocks);
+      });
+
+      refreshExternalCalendarBlocks().then((res) => {
+        if (res.blocks) {
+          setExternalCalendarBlocks(res.blocks);
+        }
+      });
     }
     return () => {
       if (unsubBookings) unsubBookings();
       if (unsubServices) unsubServices();
       if (unsubTraffic) unsubTraffic();
+      if (unsubExternalCal) unsubExternalCal();
     };
   }, [isOpen]);
+
+  const handleForceRefreshSmartphoneCalendar = async () => {
+    setIsRefreshingExternalCal(true);
+    try {
+      const res = await refreshExternalCalendarBlocks(true);
+      setExternalCalendarBlocks(res.blocks || []);
+      setSuccessNotif('✓ Jadwal dari Google Calendar smartphone berhasil diperbarui!');
+      setTimeout(() => setSuccessNotif(''), 3500);
+      onDataChanged();
+    } finally {
+      setIsRefreshingExternalCal(false);
+    }
+  };
 
   const handleManualResetTraffic = async () => {
     if (!window.confirm(`Reset hitungan pengunjung bulan ${formatMonthYearIndo(trafficStats.currentMonth)} kembali ke 0?`)) {
@@ -1481,28 +1525,41 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-bold text-base font-display text-white">
-                            Sistem Penjadwalan Otomatis Google Calendar (Direct Server)
+                            Sinkronisasi 2 Arah Google Calendar ⇄ Website (Direct Server)
                           </h4>
                           <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400/40 font-bold">
-                            AKTIF PERMANEN 24/7
+                            SINKRON 2 ARAH AKTIF 24/7
                           </span>
                         </div>
                         <p className="text-xs text-neutral-300 mt-1.5 leading-relaxed max-w-2xl">
-                          Begitu customer menyelesaikan booking di website, server secara otomatis langsung memasukkan jadwal sesi foto ke Google Calendar <strong>{studioConfig.adminEmail || 'yayphotostudio@gmail.com'}</strong> detik itu juga—<strong>tanpa login token tiap jam, tanpa perlu membuka Panel Admin, dan tanpa perlu klik sinkronisasi manual</strong>.
+                          <strong>1. Website → Kalender HP:</strong> Begitu customer booking di website, jadwal langsung masuk ke Google Calendar <strong>{studioConfig.adminEmail || 'yayphotostudio@gmail.com'}</strong>.<br />
+                          <strong>2. Kalender HP → Website:</strong> Jika Anda membuat jadwal manual di Google Calendar smartphone Anda, slot jam yang bersinggungan di website otomatis hilang / tertutup.
                         </p>
                       </div>
                     </div>
 
-                    <a
-                      href="https://calendar.google.com/calendar/u/0/r"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shrink-0 self-start sm:self-center"
-                    >
-                      <Calendar className="w-4 h-4" />
-                      <span>Buka Google Calendar</span>
-                      <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-                    </a>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
+                      <button
+                        type="button"
+                        onClick={handleForceRefreshSmartphoneCalendar}
+                        disabled={isRefreshingExternalCal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl border border-white/15 transition-all disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingExternalCal ? 'animate-spin' : ''}`} />
+                        <span>Cek Jadwal HP</span>
+                      </button>
+
+                      <a
+                        href="https://calendar.google.com/calendar/u/0/r"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        <span>Buka Google Calendar</span>
+                        <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                      </a>
+                    </div>
                   </div>
 
                   {/* Summary Info Pills */}
@@ -1514,9 +1571,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       </span>
                     </div>
                     <div className="bg-white/5 p-3 rounded-xl border border-white/10">
-                      <span className="text-[10px] font-mono text-neutral-400 uppercase block">METODE KONEKSI</span>
+                      <span className="text-[10px] font-mono text-neutral-400 uppercase block">ARAH SINKRONISASI</span>
                       <span className="font-bold text-white mt-0.5 block">
-                        Server-to-Google CalDAV (Tanpa Token 1 Jam)
+                        2 Arah Otomatis (Web ⇄ Kalender HP)
                       </span>
                     </div>
                     <div className="bg-white/5 p-3 rounded-xl border border-white/10">
@@ -1526,6 +1583,59 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       </span>
                     </div>
                   </div>
+                </div>
+
+                {/* Manual Schedules from Smartphone Google Calendar */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-900 uppercase tracking-wider">
+                      Jadwal Manual dari Kalender Smartphone Admin ({
+                        externalCalendarBlocks.filter((eb) => eb.date >= getMakassarDateTime().todayDate).length
+                      } Jadwal Aktif Memblokir Slot Web):
+                    </span>
+                    <span className="text-[11px] text-emerald-700 font-mono font-semibold">
+                      Otomatis Menutup Jam di Website
+                    </span>
+                  </div>
+
+                  {externalCalendarBlocks.filter((eb) => eb.date >= getMakassarDateTime().todayDate).length === 0 ? (
+                    <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-500">
+                      Belum ada jadwal manual tambahan pada hari ini atau tanggal mendatang di Google Calendar smartphone Anda. Jika Anda membuat jadwal di aplikasi kalender HP, jam tersebut akan otomatis muncul di sini dan menutup slot di website.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {externalCalendarBlocks
+                        .filter((eb) => eb.date >= getMakassarDateTime().todayDate)
+                        .map((eb, idx) => (
+                          <div
+                            key={`${eb.uid}-${eb.date}-${eb.startMinutes}-${idx}`}
+                            className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-amber-200/70 text-amber-950">
+                                  KALENDER HP
+                                </span>
+                                <span className="font-bold text-xs text-neutral-950">
+                                  {eb.summary || 'Jadwal Kalender Smartphone Admin'}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-600 font-mono">
+                                <span>📅 {formatDateIndo(eb.date)}</span>
+                                <span>
+                                  ⏰ {eb.isAllDay ? 'Seharian Penuh (00:00 - 23:59)' : `${eb.startTime} - ${eb.endTime} WITA`}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300 shrink-0 self-start sm:self-center">
+                              <Lock className="w-3 h-3" />
+                              <span>Slot Jam di Web Otomatis Hilang</span>
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Scheduled Bookings List */}

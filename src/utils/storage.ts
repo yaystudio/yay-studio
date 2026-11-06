@@ -1,8 +1,9 @@
-import { Booking, BlockedSlot, BookingStatus, Service, StudioConfig } from '../types';
+import { Booking, BlockedSlot, BookingStatus, Service, StudioConfig, ExternalCalendarBlock } from '../types';
 import { INITIAL_BOOKINGS, SERVICES, STUDIO_CONFIG, BACKDROP_OPTIONS } from '../data/studioData';
 
 const BOOKINGS_KEY = 'yay_studio_bookings_v3';
 const BLOCKED_SLOTS_KEY = 'yay_studio_blocked_slots_v3';
+const EXTERNAL_CALENDAR_BLOCKS_KEY = 'yay_studio_calendar_blocks_v1';
 const SERVICES_DATA_KEY = 'yay_studio_services_v3';
 const STUDIO_CONFIG_KEY = 'yay_studio_config_v3';
 
@@ -230,6 +231,29 @@ export function getStoredBlockedSlots(): BlockedSlot[] {
   }
 }
 
+export function getStoredExternalCalendarBlocks(): ExternalCalendarBlock[] {
+  try {
+    const raw = localStorage.getItem(EXTERNAL_CALENDAR_BLOCKS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (b: any) =>
+        b &&
+        typeof b.date === 'string' &&
+        (b.isAllDay || (typeof b.startMinutes === 'number' && typeof b.endMinutes === 'number'))
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredExternalCalendarBlocks(blocks: ExternalCalendarBlock[]): void {
+  try {
+    localStorage.setItem(EXTERNAL_CALENDAR_BLOCKS_KEY, JSON.stringify(blocks || []));
+  } catch {}
+}
+
 export function toggleBlockSlot(date: string, timeSlot: string): BlockedSlot[] {
   const current = getStoredBlockedSlots();
   const exists = current.some((s) => s.date === date && s.timeSlot === timeSlot);
@@ -342,6 +366,26 @@ export function isSlotAvailable(
   });
 
   if (isBooked) {
+    return { available: false, reason: 'booked' };
+  }
+
+  const externalBlocks = getStoredExternalCalendarBlocks();
+  const isExternalBusy = externalBlocks.some((eb) => {
+    if (!eb || eb.date !== date) return false;
+    if (eb.isAllDay) return true;
+    if (slotStartMin === null) return eb.startTime === timeSlot;
+    const ebStart =
+      typeof eb.startMinutes === 'number'
+        ? eb.startMinutes
+        : parseTimeToMinutes(eb.startTime) ?? 0;
+    const ebEnd =
+      typeof eb.endMinutes === 'number'
+        ? eb.endMinutes
+        : (parseTimeToMinutes(eb.endTime) ?? ebStart + 30);
+    return slotStartMin < ebEnd && slotEndMin! > ebStart;
+  });
+
+  if (isExternalBusy) {
     return { available: false, reason: 'booked' };
   }
 
@@ -459,6 +503,7 @@ export function getAvailableSlotsForDate(
   const makassarNow = getMakassarDateTime();
   const bookings = getStoredBookings();
   const blockedSlots = getStoredBlockedSlots();
+  const externalBlocks = getStoredExternalCalendarBlocks();
   const allServices = getStoredServices();
 
   return rawSlots.filter((slot) => {
@@ -499,7 +544,7 @@ export function getAvailableSlotsForDate(
       return false;
     }
 
-    // 4. Hilangkan slot yang diblokir oleh admin
+    // 4. Hilangkan slot yang diblokir oleh admin di web
     const isBlocked = blockedSlots.some((s) => {
       if (s.date !== selectedDate) return false;
       const blockStartMin = parseTimeToMinutes(s.timeSlot);
@@ -511,6 +556,25 @@ export function getAvailableSlotsForDate(
     });
 
     if (isBlocked) {
+      return false;
+    }
+
+    // 5. Hilangkan slot yang bertabrakan dengan jadwal manual di Google Calendar smartphone admin
+    const isExternalCalendarBusy = externalBlocks.some((eb) => {
+      if (!eb || eb.date !== selectedDate) return false;
+      if (eb.isAllDay) return true;
+      const ebStart =
+        typeof eb.startMinutes === 'number'
+          ? eb.startMinutes
+          : parseTimeToMinutes(eb.startTime) ?? 0;
+      const ebEnd =
+        typeof eb.endMinutes === 'number'
+          ? eb.endMinutes
+          : (parseTimeToMinutes(eb.endTime) ?? ebStart + 30);
+      return slotStartMin < ebEnd && slotEndMin > ebStart;
+    });
+
+    if (isExternalCalendarBusy) {
       return false;
     }
 

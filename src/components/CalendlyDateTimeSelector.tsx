@@ -1,6 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Service } from '../types';
 import { getAvailableSlotsForDate, getMakassarDateTime } from '../utils/storage';
+import {
+  subscribeToExternalCalendarBlocks,
+  refreshExternalCalendarBlocks,
+  subscribeToBookings,
+} from '../utils/firestoreService';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 
 interface CalendlyDateTimeSelectorProps {
@@ -93,10 +98,32 @@ export const CalendlyDateTimeSelector: React.FC<CalendlyDateTimeSelectorProps> =
     return days;
   }, [currentYear, currentMonth, makassarNow.todayDate]);
 
-  // Dynamic slots: generated based on service duration, with past Makassar time and booked slots excluded
+  // Track live sync version whenever bookings or smartphone Google Calendar blocks update
+  const [calendarSyncTick, setCalendarSyncTick] = useState(0);
+
+  useEffect(() => {
+    const unsubBlocks = subscribeToExternalCalendarBlocks(() => {
+      setCalendarSyncTick((t) => t + 1);
+    });
+    const unsubBookings = subscribeToBookings(() => {
+      setCalendarSyncTick((t) => t + 1);
+    });
+
+    // Immediately pull fresh events from admin's Google Calendar via CalDAV
+    refreshExternalCalendarBlocks().then(() => {
+      setCalendarSyncTick((t) => t + 1);
+    });
+
+    return () => {
+      unsubBlocks();
+      unsubBookings();
+    };
+  }, [selectedDate]);
+
+  // Dynamic slots: generated based on service duration, with past Makassar time, website bookings, and smartphone Google Calendar events excluded
   const readySlots = useMemo(() => {
     return getAvailableSlotsForDate(service, selectedDate);
-  }, [service, selectedDate]);
+  }, [service, selectedDate, calendarSyncTick]);
 
   // Reset selectedTimeSlot if it no longer exists in readySlots
   useEffect(() => {

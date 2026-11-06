@@ -67,6 +67,17 @@ export interface BlockedSlot {
   timeSlot: string;
 }
 
+export interface ExternalCalendarBlock {
+  uid: string;
+  summary: string;
+  date: string; // YYYY-MM-DD in WITA (GMT+8)
+  startTime: string; // HH:MM in WITA
+  endTime: string; // HH:MM in WITA
+  startMinutes: number;
+  endMinutes: number;
+  isAllDay?: boolean;
+}
+
 export interface StudioConfig {
   name: string;
   tagline: string;

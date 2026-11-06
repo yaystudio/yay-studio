@@ -77,6 +77,14 @@
         "lastVisitAt": { "type": "string" }
       },
       "required": ["currentMonth", "monthlyVisits", "uniqueVisitors"]
+    },
+    "CalendarBlocks": {
+      "title": "CalendarBlocks",
+      "description": "External manual events synced from the studio admin Google Calendar via CalDAV to block website time slots",
+      "type": "object",
+      "properties": {
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -91,6 +99,10 @@
     "/config/traffic": {
       "schema": "TrafficStats",
       "description": "Monthly website visitor traffic statistics, automatically reset each month"
+    },
+    "/config/calendarBlocks": {
+      "schema": "CalendarBlocks",
+      "description": "Real-time busy intervals synced from admin smartphone Google Calendar"
     },
     "/bookings/{bookingId}": {
       "schema": "Booking",

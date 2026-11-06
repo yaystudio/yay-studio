@@ -8,8 +8,15 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Service, StudioConfig, Booking, TrafficStats } from '../types';
-import { getStoredServices, getStoredStudioConfig, getStoredBookings, getMakassarDateTime } from './storage';
+import { Service, StudioConfig, Booking, TrafficStats, ExternalCalendarBlock } from '../types';
+import {
+  getStoredServices,
+  getStoredStudioConfig,
+  getStoredBookings,
+  getMakassarDateTime,
+  getStoredExternalCalendarBlocks,
+  saveStoredExternalCalendarBlocks,
+} from './storage';
 import { SERVICES, STUDIO_CONFIG } from '../data/studioData';
 
 export enum OperationType {
@@ -606,5 +613,60 @@ export async function resetCurrentMonthTraffic(): Promise<TrafficStats> {
 
   await setDoc(doc(db, 'config', 'traffic'), cleanForFirestore(resetData));
   return resetData;
+}
+
+/**
+ * Real-time subscription to external manual events synced from the admin's Google Calendar (`config/calendarBlocks`).
+ */
+export function subscribeToExternalCalendarBlocks(
+  onUpdate: (blocks: ExternalCalendarBlock[], updatedAt?: string) => void
+): () => void {
+  const ref = doc(db, 'config', 'calendarBlocks');
+
+  return onSnapshot(
+    ref,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onUpdate(getStoredExternalCalendarBlocks());
+        return;
+      }
+      const data = snapshot.data() as {
+        blocks?: ExternalCalendarBlock[];
+        updatedAt?: string;
+      };
+      const blocks = Array.isArray(data?.blocks) ? data.blocks : [];
+      saveStoredExternalCalendarBlocks(blocks);
+      onUpdate(blocks, data?.updatedAt);
+    },
+    (err) => {
+      console.warn('CalendarBlocks subscription note:', err);
+    }
+  );
+}
+
+/**
+ * Triggers an immediate server-side CalDAV query from the admin's Google Calendar
+ * so any new schedule added on the admin's smartphone immediately blocks website time slots.
+ */
+export async function refreshExternalCalendarBlocks(
+  force: boolean = false
+): Promise<{ blocks: ExternalCalendarBlock[]; updatedAt?: string }> {
+  try {
+    const res = await fetch(`/api/calendar-busy${force ? '?force=1' : ''}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      return { blocks: getStoredExternalCalendarBlocks() };
+    }
+    const data = await res.json();
+    if (Array.isArray(data?.blocks)) {
+      saveStoredExternalCalendarBlocks(data.blocks);
+      return { blocks: data.blocks, updatedAt: data.updatedAt };
+    }
+  } catch (err) {
+    console.warn('Calendar busy fetch note:', err);
+  }
+  return { blocks: getStoredExternalCalendarBlocks() };
 }
 

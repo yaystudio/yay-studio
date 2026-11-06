@@ -12,7 +12,13 @@ import { EmailPreviewModal } from './components/EmailPreviewModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { Service, Booking, StudioConfig } from './types';
 import { getStoredServices, getStoredStudioConfig } from './utils/storage';
-import { subscribeToServices, subscribeToStudioConfig, recordPageVisit } from './utils/firestoreService';
+import {
+  subscribeToServices,
+  subscribeToStudioConfig,
+  subscribeToExternalCalendarBlocks,
+  refreshExternalCalendarBlocks,
+  recordPageVisit,
+} from './utils/firestoreService';
 import { testFirestoreConnection } from './utils/firebase';
 
 export default function App() {
@@ -58,9 +64,16 @@ export default function App() {
       }
     });
 
+    const unsubCalendarBlocks = subscribeToExternalCalendarBlocks(() => {
+      // External smartphone calendar blocks updated in localStorage
+    });
+
+    refreshExternalCalendarBlocks();
+
     return () => {
       unsubServices();
       unsubConfig();
+      unsubCalendarBlocks();
     };
   }, [dataVersion]);
 
